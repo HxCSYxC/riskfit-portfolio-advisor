@@ -1,0 +1,16 @@
+{
+  "name": "Mr Wong Siu Ming",
+  "age": 34,
+  "investment_amount": 2000000,
+  "answers": {
+    "objective": 4,
+    "experience": 3,
+    "reaction": 4,
+    "trade_off": 4,
+    "volatility_comfort": 4
+  },
+  "horizon": 4,
+  "max_loss": 4,
+  "liquidity": 2,
+  "notes": "Entrepreneur after selling his company. Long horizon and high risk appetite, but may use part of the money for a flat deposit next year."
+}

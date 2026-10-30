@@ -75,14 +75,15 @@ def plot_efficient_frontier(frontier, portfolios, mu, cov):
 
 
 
-def plot_scenario_paths(asset_returns, portfolios, colours=None):
+def plot_scenario_paths(asset_returns, portfolios, colours=None, figsize=(12, 4.2),
+                        title="How each portfolio would have fared in past crises"):
     """One panel per crisis: value of 100 invested at the start, for each portfolio.
 
     portfolios: dict of name -> weights. Profile names get their profile colour;
     pass `colours` (name -> colour) for anything else.
     """
     colours = {**PROFILE_COLOURS_BY_NAME, **(colours or {})}
-    fig, axes = plt.subplots(1, len(SCENARIOS), figsize=(12, 4.2), facecolor=SURFACE)
+    fig, axes = plt.subplots(1, len(SCENARIOS), figsize=figsize, facecolor=SURFACE)
     for ax, scenario in zip(axes, SCENARIOS):
         _style_axes(ax)
         for name, weights in portfolios.items():
@@ -95,11 +96,17 @@ def plot_scenario_paths(asset_returns, portfolios, colours=None):
         ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
     axes[0].set_ylabel("Value of 100 invested", color=INK_SECONDARY, fontsize=10)
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper left", bbox_to_anchor=(0.01, 1.0), ncol=len(labels), frameon=False,
-               fontsize=9, labelcolor=INK_SECONDARY)
-    fig.suptitle("How each portfolio would have fared in past crises", x=0.01, y=1.08, ha="left",
-                 fontsize=13, color=INK, fontweight="bold")
+    # Leave a fixed space (in inches) at the top for the optional title and the legend,
+    # so short and tall versions of the chart both lay out cleanly.
+    height = figsize[1]
+    title_space = 0.45 if title else 0.0
+    if title:
+        fig.suptitle(title, x=0.01, y=1 - 0.05 / height, va="top", ha="left", fontsize=13, color=INK,
+                     fontweight="bold")
+    fig.legend(handles, labels, loc="upper left", bbox_to_anchor=(0.01, 1 - title_space / height),
+               ncol=len(labels), frameon=False, fontsize=9, labelcolor=INK_SECONDARY)
     fig.tight_layout()
+    fig.subplots_adjust(top=1 - (title_space + 0.7) / height)
     return fig
 
 
@@ -119,4 +126,16 @@ def plot_rolling_correlation(correlation):
     ax.set_title("Rolling 3-year correlation: US equities (SPY) vs investment-grade bonds (AGG)",
                  loc="left", fontsize=12, color=INK, fontweight="bold", pad=10)
     fig.tight_layout()
+    return fig
+
+
+def plot_allocation_donut(weights, centre_text=""):
+    """Donut chart of the portfolio weights. Labels live in the table next to it, so none are drawn here."""
+    shown = weights[weights >= 0.005]
+    fig, ax = plt.subplots(figsize=(3, 3), facecolor="white")
+    ax.pie(shown.values, colors=[ASSET_COLOURS[a] for a in shown.index], startangle=90, counterclock=False,
+           wedgeprops={"width": 0.38, "edgecolor": "white", "linewidth": 2})
+    ax.text(0, 0, centre_text, ha="center", va="center", fontsize=11, color=INK, fontweight="bold")
+    ax.set_aspect("equal")
+    fig.tight_layout(pad=0)
     return fig

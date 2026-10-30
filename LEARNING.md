@@ -398,3 +398,102 @@ grade" rather than one that flatters the results.
 > −10%", to cover risks the history doesn't contain. I also used the stress
 > results to check my own questionnaire: they showed my original loss bands
 > were too optimistic, so I recalibrated them.
+
+---
+
+## Phase 4: The one-page PDF proposal
+
+### What the code does
+
+**`riskfit/proposal.py`** connects all the earlier steps in one function, `build_proposal(client)`:
+
+```
+client answers ──► score_client()            → risk profile + cash floor   (Phase 1)
+               ──► build_profile_portfolio() → weights, exp. return, vol    (Phase 2)
+               ──► stress_test(), risk_summary() → crisis results, VaR, ES   (Phase 3)
+               ──► Proposal object (everything the PDF and the app need)
+```
+
+- `Client` stores a client's name, age, amount and answers. It can be saved to
+  and loaded from JSON. The three example clients are in `examples/*.json`.
+- `Proposal.typical_range` is the expected return ± one historical volatility.
+  If returns were roughly normal, about 2 years in 3 would fall in this range.
+- `explain_allocation()` writes the "Why this mix suits you" text from
+  templates. It explains *why* this profile (using the reasons from the
+  questionnaire), *what each asset does* ("bonds … usually cushion falls in
+  share prices"), and *what to expect*, including the worst loss in plain numbers.
+
+**`riskfit/report/pdf.py`** lays out one A4 page with reportlab:
+1. Header: client name, date, and "fictional client".
+2. **Your risk profile**: profile name, level, and the client's key answers.
+3. **Recommended allocation**: pie (donut) chart, plus a table with the
+   weights, USD amounts and the ETF used for each asset class.
+4. **What to expect**, as three tiles: expected return, typical yearly range,
+   and the worst historical fall (also in USD).
+5. **Past crises**: a table with return, largest fall, USD loss and recovery
+   time for each crisis. Below it, a chart of *this client's* portfolio vs
+   100% shares through each crisis.
+6. **Why this mix suits you**: the plain-English explanation.
+7. **Disclaimer**: "For illustration only. Not investment advice", plus data sources.
+
+`scripts/generate_examples.py` builds the PDFs for the three fictional clients:
+
+| Client | Situation | Profile | Why |
+|---|---|---|---|
+| Mr Chan Tai Man, 62 | About to retire, may draw on savings | Conservative | Attitude suggests Moderately Conservative, but he can only accept a 15% loss |
+| Ms Lee Ka Yan, 41 | Saving for retirement in ~20 years | Balanced | Attitude suggests Moderately Aggressive, but her loss limit is 35% |
+| Mr Wong Siu Ming, 34 | Entrepreneur, may buy a flat next year | Aggressive, with 20% cash | High risk appetite and long horizon, but needs liquidity |
+
+### Why these choices
+
+- **One `build_proposal()` for both the PDF and the app**, so the numbers a
+  client sees on screen and on paper can never disagree.
+- **Plain English and money amounts.** "Your portfolio could have fallen by
+  about USD 471,000" means more to a client than "maximum drawdown −31.4%".
+  Showing USD amounts makes the risk real *before* it happens. That is the
+  point of a suitability conversation.
+- **Rounded numbers** (to the nearest USD 1,000 and whole percentages).
+  Precise-looking figures like "USD 824,684" suggest false accuracy for
+  something based on assumptions.
+- **A comparison line (100% shares)** in the crisis chart gives the client a
+  reference point, so they can see what diversification did for them.
+- **The disclaimer is prominent** and lists the main simplifications: proxies,
+  no fees or taxes, USD base, and past performance. In a regulated industry,
+  what you *don't* promise matters as much as what you show.
+- **A test checks every example PDF is exactly one page** and contains the key
+  sections. Layout changes can quietly push content onto page 2.
+
+### Interview questions
+
+**Q1. How would you explain this proposal to a client with no finance background?**
+> I'd start with them, not the products. "From your answers, you're
+> comfortable with some ups and downs, but you told us you couldn't accept
+> losing more than about a third, so we've matched you to a Balanced
+> portfolio." Then the mix, with each part's job: shares for growth, bonds for
+> income and cushioning, a little gold for crises. Then expectations, as a
+> range rather than one number: "about 5–6% a year on average, and most years
+> between −6% and +17%". Finally the worst case in dollars: "in 2008 this mix
+> would have fallen about 30%, or around USD 470,000 on your
+> USD 1.5 million, and took about a year to recover." If they react badly to
+> that number, it's a sign the profile may be too aggressive, and that is the
+> purpose of showing it.
+
+**Q2. Why show a "typical range" instead of just the expected return?**
+> A single number sounds like a promise, and clients anchor on it. The range,
+> expected return ± one volatility (roughly 2 years in 3), shows that negative
+> years are normal even for a well-built portfolio. That sets the right
+> expectations and reduces the risk of panic selling in a bad year. I also
+> state the worst historical loss separately, because a ± one-volatility range
+> says nothing about crashes. Returns have fat tails, and a 2008-type fall is
+> far outside it.
+
+**Q3. What would need to change before a real bank could use this proposal?**
+> Several things. A proper suitability process, including knowledge and
+> experience checks, financial situation and concentration, with the
+> relationship manager's sign-off. The bank's own capital market
+> assumptions, approved products instead of ETF proxies, and fees and taxes
+> included. Currency: an HKD-based client with USD assets is fine under the
+> peg, but other currencies would need hedging decisions. Compliance-approved
+> wording and disclosures, plus record-keeping of what was shown to the
+> client. Technically I'd add versioned data and assumptions, so any past
+> proposal could be reproduced exactly.
