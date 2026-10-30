@@ -44,7 +44,7 @@ analysis is a reasonable guide for a Hong Kong client.
 **`riskfit/risk_profile/profiles.py`** defines the five risk profiles
 (Conservative → Aggressive). Each profile has:
 - a **target volatility**, the most risk the optimiser is allowed to take
-  (from 4% a year up to 15%);
+  (from 4% a year up to 14%);
 - **weight limits** per asset class, e.g. a Conservative portfolio holds at
   most 20% equities;
 - an indicative **"bad year" loss**, used to match the client's own loss limit.
@@ -116,3 +116,129 @@ PDF proposal later.
 > offline, and so every run uses the same data set. That means the numbers in
 > the proposal can be reproduced and checked later, which matters for
 > compliance.
+
+---
+
+## Phase 2: Optimiser and efficient frontier
+
+### What the code does
+
+**`riskfit/optimiser/assumptions.py`** sets the *expected return* for each asset
+class using simple "building blocks":
+
+| Asset | Building block | Expected return |
+|---|---|---|
+| Cash | long-run T-bill rate | 3.0% |
+| Bonds | cash + 1.0% term and credit premium | 4.0% |
+| Equities | cash + 4.0% equity risk premium | 7.0% |
+| Gold | 2.5% inflation + 1.0% real return | 3.5% |
+
+**`riskfit/optimiser/mean_variance.py`** builds the portfolios:
+
+1. **Covariance matrix.** It uses month-end returns from June 2007 to October
+   2026 (about 230 months) for all four ETFs and applies **Ledoit-Wolf
+   shrinkage to the correlations**. Each asset keeps its own measured
+   volatility (equities 15.5%, bonds 4.7%, cash 0.6%, gold 17.6% a year). The
+   correlations are pulled 25% of the way towards zero. For example, the
+   stock–bond correlation goes from 0.25 to 0.19.
+2. **Optimisation.** For each profile, SciPy's `SLSQP` solver finds the weights that
+   - **maximise expected return**,
+   - with **volatility ≤ the profile's target**,
+   - **weights adding up to 100%**,
+   - and **each weight within the profile's limits** (no short selling).
+3. **Liquidity.** If the client needs cash, the cash floor is raised to 10% or
+   20%. If that is above the profile's normal cash cap, the cap is raised too.
+4. **Unreachable target.** If even the safest allowed mix is riskier than the
+   target, the code returns the minimum-risk portfolio and sets
+   `target_met = False`, instead of failing.
+
+**`riskfit/optimiser/frontier.py`** traces the **efficient frontier**: for 40
+target returns it finds the lowest-risk portfolio that reaches each one. The
+chart (`docs/images/efficient_frontier.png`) shows the frontier, the four
+single assets and the five profile portfolios.
+
+**Results:**
+
+| Profile | Equities | Bonds | Cash | Gold | Exp. return | Volatility |
+|---|---|---|---|---|---|---|
+| Conservative | 18.4% | 41.7% | 34.9% | 5.0% | 4.18% | 4.0% |
+| Moderately Conservative | 34.1% | 55.9% | 5.0% | 5.0% | 4.95% | 6.5% |
+| Balanced | 53.6% | 41.4% | 0.0% | 5.0% | 5.58% | 9.0% |
+| Moderately Aggressive | 72.1% | 22.9% | 0.0% | 5.0% | 6.14% | 11.5% |
+| Aggressive | 89.7% | 5.3% | 0.0% | 5.0% | 6.67% | 14.0% |
+
+Each profile's weight limits cost less than 0.1% a year compared with the
+unconstrained frontier.
+
+### Why these choices
+
+- **Forward-looking returns, not historical averages.** Mean-variance
+  optimisation is very sensitive to expected returns. Historically, US
+  equities returned about 11% a year from 2007 to 2026, and gold about 9%. Both
+  were strong periods that may not repeat. An optimiser fed those numbers
+  would put almost everything into US stocks. Building-block assumptions are
+  conservative, easy to explain to a client, and close to the long-term
+  capital market assumptions that banks and asset managers publish.
+- **Ledoit-Wolf on correlations only.** The sample covariance matrix contains
+  estimation noise, and the optimiser leans on that noise ("error
+  maximisation"). Shrinkage pulls the estimate towards a simple target, and
+  Ledoit-Wolf chooses *how much* from the data. I apply it to standardised
+  returns, so it shrinks correlations but leaves each volatility alone. The
+  standard version pulls all variances towards their average, which made cash
+  look like it had 2% volatility instead of 0.6%. Volatilities are estimated
+  quite precisely; correlations are the noisy part.
+- **Monthly returns** reduce day-to-day noise and timing mismatches. For
+  example, gold trades on different exchanges and hours than US stocks.
+  Monthly returns also match how a strategic portfolio is reviewed. One
+  caveat: volatility measured from *daily* data is higher (about 20% for
+  equities, because of very turbulent days in 2008 and 2020). Phase 3 reports
+  that realised daily risk as well.
+- **Volatility target + weight limits** instead of a fixed allocation table.
+  The volatility target links each profile to a clear risk number. The weight
+  limits stop "corner solutions", such as 0% bonds for a Balanced client, and
+  reflect house policy.
+- **A 5% minimum in gold.** With a 3.5% expected return and about 18%
+  volatility, the pure optimiser held **no gold at all**. That is correct
+  given its inputs, but gold's value is as a *crisis diversifier*, which an
+  average covariance matrix misses. So I added a small strategic floor and
+  measured its cost (under 0.1% a year). This is a deliberate policy decision,
+  not the optimiser's output, and I say so openly.
+- **SciPy SLSQP rather than cvxpy.** With four assets the problem is tiny.
+  SLSQP handles the nonlinear volatility constraint directly, and it means one
+  library fewer to install.
+
+### Interview questions
+
+**Q1. Why didn't you use historical average returns in the optimiser?**
+> Mean-variance optimisation is extremely sensitive to expected returns: a
+> small change can swing the weights a lot. Historical averages are very noisy
+> estimates of the future, and the last 20 years were unusually good for US
+> equities and gold. Using them would make the optimiser "chase" past
+> performance and concentrate the portfolio. Instead I used building blocks:
+> a cash rate plus a risk premium for each asset class. That is conservative,
+> easy to justify to a client, and close to how banks publish their capital
+> market assumptions. Risk, measured by volatilities and correlations, is
+> estimated from data, because it is much more stable than returns.
+
+**Q2. What is Ledoit-Wolf shrinkage and why did you apply it to correlations only?**
+> The sample covariance matrix has estimation error. The optimiser treats
+> that error as real and over-weights assets that *look* like good
+> diversifiers by chance. Ledoit-Wolf blends the sample estimate with a
+> simple, stable target, and it calculates the best blend from the data. Here
+> it pulled correlations 25% of the way towards zero. I applied it to
+> standardised returns because the standard version also pulls all the
+> variances towards the average. With cash at 0.6% volatility and gold at
+> 18%, that made cash look about four times riskier than it is. Volatilities
+> are measured accurately, so there's no reason to shrink them.
+
+**Q3. The optimiser wanted 0% gold, but your portfolios hold 5%. Isn't that overriding the model?**
+> Yes, and on purpose. The model is only as good as its inputs. With a
+> conservative return assumption and one average correlation matrix, gold
+> looks like a high-volatility asset with a low return. But its main role is
+> to diversify in crises, especially when inflation is the problem and bonds
+> and stocks fall together, as in 2022. A single covariance matrix can't
+> capture that. So I set a small 5% strategic floor, measured its cost (less
+> than 0.1% a year of expected return), and documented it. In practice,
+> investment committees often combine optimiser output with this kind of
+> judgement. The important thing is to be transparent about it, and the
+> Phase 3 stress tests show whether it helped.
