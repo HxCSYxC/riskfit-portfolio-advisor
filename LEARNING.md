@@ -47,7 +47,9 @@ analysis is a reasonable guide for a Hong Kong client.
   (from 4% a year up to 14%);
 - **weight limits** per asset class, e.g. a Conservative portfolio holds at
   most 20% equities;
-- an indicative **"bad year" loss**, used to match the client's own loss limit.
+- a **loss limit** (15% / 25% / 35% / 45% / 60%), the largest fall the client should be
+  ready for. It is used to match the client's own maximum acceptable loss.
+  (Phase 3 recalibrated these against the stress tests; see below.)
 
 **`riskfit/risk_profile/questionnaire.py`** scores the client. It separates two ideas:
 
@@ -242,3 +244,157 @@ unconstrained frontier.
 > investment committees often combine optimiser output with this kind of
 > judgement. The important thing is to be transparent about it, and the
 > Phase 3 stress tests show whether it helped.
+
+---
+
+## Phase 3: Stress tests and risk measures
+
+### What the code does
+
+**`riskfit/stress_test/scenarios.py`** defines three historical crises and
+replays each profile's *current* weights through them:
+
+| Scenario | Window | What happened |
+|---|---|---|
+| Global Financial Crisis | 9 Oct 2007 – 9 Mar 2009 | US equities −55%; bonds +7%, gold +25% |
+| COVID-19 crash | 19 Feb – 23 Mar 2020 | US equities −33% in five weeks; almost everything fell for a few days |
+| 2022 inflation and rate shock | calendar year 2022 | US equities −18% **and** bonds −13%, together |
+
+For each scenario it reports:
+- **Return over the crisis**: from the first day to the last day of the window.
+- **Maximum drawdown**: the largest fall from a peak to a later low inside the
+  window. This can be worse than the return, because the portfolio may bounce
+  back a little before the window ends.
+- **Recovery time**: calendar days from the lowest point until the portfolio
+  is back at its pre-crisis peak, using all the data *after* the crisis.
+  "Not yet recovered" if that never happens.
+
+The portfolio is rebalanced to its target weights every day, with no fees or taxes.
+
+**`riskfit/stress_test/metrics.py`** holds the maths: portfolio returns,
+total return, drawdown, recovery, annualised volatility, historical VaR,
+expected shortfall and rolling correlation.
+
+**Results** (maximum drawdown, with recovery time in brackets):
+
+| Profile | 2008 GFC | 2020 COVID | 2022 inflation |
+|---|---|---|---|
+| Conservative | −12.4% (10 months) | −8.6% (2 months) | −11.4% (14 months) |
+| Moderately Conservative | −20.2% (12 months) | −14.2% (2 months) | −17.1% (17 months) |
+| Balanced | −30.4% (13 months) | −19.8% (3 months) | −19.5% (14 months) |
+| Moderately Aggressive | −40.9% (21 months) | −25.5% (4 months) | −21.2% (14 months) |
+| Aggressive | −50.0% (26 months) | −30.8% (4 months) | −23.0% (14 months) |
+
+**Full-period risk** (daily data, June 2007 – Oct 2026):
+
+| Profile | Annual return | Annual volatility | 95% daily VaR | 95% daily ES |
+|---|---|---|---|---|
+| Conservative | 4.5% | 4.5% | −0.39% | −0.64% |
+| Moderately Conservative | 6.3% | 7.5% | −0.67% | −1.10% |
+| Balanced | 8.0% | 10.9% | −1.00% | −1.64% |
+| Moderately Aggressive | 9.3% | 14.3% | −1.31% | −2.17% |
+| Aggressive | 10.5% | 17.7% | −1.64% | −2.70% |
+
+**Two charts** (in `docs/images/`):
+- `stress_scenarios.png`: the value of 100 invested, through each crisis, for all five profiles.
+- `stock_bond_correlation.png`: the rolling 3-year (36-month) correlation between SPY and AGG.
+
+### What the stress tests changed
+
+1. **Loss limits recalibrated.** In Phase 1, a client who answered "I can
+   accept up to 5% loss" was put in the Conservative profile. But the
+   Conservative portfolio actually fell **12.4%** in 2008. A proposal must not
+   promise a loss limit that the portfolio has already broken. So each
+   profile now has a `loss_limit` (15 / 25 / 35 / 45 / 60%) set just above its
+   worst historical drawdown. The questionnaire's loss bands match these
+   limits. A test (`test_profiles_stay_within_their_loss_limits`) re-checks
+   this on the real data every time the tests run.
+2. **The gold floor helped, a little.** Compared with the same profiles with
+   no gold minimum, 5% gold reduced the maximum drawdown by about 0.3–0.7
+   percentage points in 2008 and 2022, and made no difference in COVID. It is
+   modest but in the right direction, for a cost of under 0.1% a year of
+   expected return.
+
+### Why 2022 matters: bonds don't always protect you
+
+Usually, when stocks fall it is because the economy is weakening. Central
+banks then cut interest rates, which pushes bond prices *up*. So bonds rise
+when stocks fall, and the stock–bond correlation is negative. That is why a
+"balanced" portfolio works.
+
+In 2022 the problem was **inflation**. To fight it, the Federal Reserve raised
+rates very fast. Higher rates push bond prices *down*, and they also hurt
+company valuations, so **both fell at the same time**. The correlation chart
+shows this clearly. From 2012 to 2021 the 3-year correlation was mostly
+between −0.45 and 0, so bonds diversified stocks. After 2022 it jumped to
+about **+0.7**. In plain English: when inflation is the main risk, bonds and
+stocks are hit by the same thing, so holding bonds does not cushion the fall.
+This is why the Balanced portfolio lost almost as much in 2022 (−19.5%) as in
+the COVID crash (−19.8%), and why the gaps between profiles were much smaller
+in 2022 than in 2008.
+
+One more honest detail. AGG includes corporate and mortgage bonds, which carry
+credit risk. So even in 2008 its correlation with stocks briefly turned
+*positive* (about +0.3). A Treasury-only fund would have looked more
+defensive. That is the trade-off of choosing a proxy that matches "investment
+grade" rather than one that flatters the results.
+
+### Why these choices
+
+- **Historical scenarios rather than made-up shocks.** They are easy for a
+  client to understand ("this is what would have happened in 2008"). They
+  also capture real correlations during crises, which are different from
+  normal times.
+- **Maximum drawdown *and* recovery time.** Clients feel losses as "how far
+  did it fall?" and "how long until I was back to where I started?". Recovery
+  time shows that the 2008 losses took the Aggressive portfolio over two years
+  to recover from the low point. After COVID it took only about four months.
+- **Historical VaR and ES** (not a normal-distribution formula). They use the
+  actual daily returns, so they include fat tails such as the crash days in
+  2008 and 2020. VaR says "on 95% of days the loss was smaller than X".
+  Expected shortfall says "on the worst 5% of days, the average loss was Y".
+  ES is the better measure of tail risk because it looks *inside* the tail.
+- **Monthly 36-month window for the correlation.** It is long enough to be
+  stable, short enough to show regime changes, and it is the convention in
+  most research on stock–bond correlation.
+- **Daily vs monthly volatility.** The optimiser's target uses monthly data,
+  for example 14% for Aggressive. Realised daily volatility is higher (17.7%),
+  because daily data captures the turbulent days in 2008 and 2020, and
+  volatility clusters. Both numbers are shown so the client sees the fuller
+  picture.
+
+### Interview questions
+
+**Q1. Why did the Balanced portfolio lose about as much in 2022 as in the COVID crash, even though stocks fell much less?**
+> Because bonds didn't help in 2022. In COVID, bonds were roughly flat and
+> cushioned part of the stock fall. In 2022 the shock was inflation, and the
+> Fed raised rates quickly, so bond prices fell (AGG −13%) at the same time as
+> stocks (−18%). A Balanced portfolio relies on bonds to offset equity losses.
+> When both are hit by the same driver, rising rates, the diversification
+> disappears. You can see it in the rolling 3-year stock–bond correlation: it
+> went from negative for most of the 2010s to about +0.7 after 2022. For a
+> client, the lesson is that "60/40" is not automatically safe when inflation
+> is the main risk. Assets like cash, short-term T-bills and gold matter more
+> in that environment.
+
+**Q2. What is the difference between VaR and expected shortfall, and which would you show a client?**
+> Historical 95% VaR is the daily loss that was exceeded on only 5% of days.
+> For the Balanced portfolio that is about 1.0%. It tells you where the bad
+> days start, but nothing about how bad they get. Expected shortfall is the
+> average loss on those worst 5% of days: about 1.6% for Balanced. It looks
+> inside the tail, so it is the better risk measure, and regulators moved from
+> VaR to ES for that reason. For a private client, though, I'd lead with the
+> stress-test drawdown ("in 2008 this portfolio fell about 30% and took about
+> a year to recover"), because it is concrete and easy to picture.
+
+**Q3. What are the limitations of historical stress testing?**
+> It only shows crises that have already happened, and the next one will be
+> different. The ETF data starts in 2007, so we can't test the 1970s
+> inflation or the 2000 tech crash. I assume daily rebalancing with no costs,
+> and real clients rebalance less often and pay fees. The tests use today's
+> weights, which were chosen *after* those events, so there is some hindsight.
+> And the proxies matter: AGG and SPY are US funds. In practice I would add
+> hypothetical scenarios, such as "rates +200bp" or "equities −30% with bonds
+> −10%", to cover risks the history doesn't contain. I also used the stress
+> results to check my own questionnaire: they showed my original loss bands
+> were too optimistic, so I recalibrated them.

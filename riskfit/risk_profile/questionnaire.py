@@ -80,12 +80,14 @@ HORIZON_OPTIONS = [
     ("More than 10 years", 5),
 ]
 
+# The bands match each profile's loss_limit, so the client's answer is consistent
+# with how that profile actually behaved in the historical stress tests.
 MAX_LOSS_OPTIONS = [
-    ("Up to 5%", 1),
-    ("Up to 10%", 2),
-    ("Up to 20%", 3),
-    ("Up to 30%", 4),
-    ("More than 30%", 5),
+    ("Up to 15%", 1),
+    ("Up to 25%", 2),
+    ("Up to 35%", 3),
+    ("Up to 45%", 4),
+    ("More than 45%", 5),
 ]
 
 # Liquidity needs set a minimum cash weight instead of capping the profile.
