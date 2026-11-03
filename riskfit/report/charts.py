@@ -37,8 +37,11 @@ def _style_axes(ax):
     ax.set_axisbelow(True)
 
 
-def plot_efficient_frontier(frontier, portfolios, mu, cov):
-    """Frontier line, the four single assets, and the five profile portfolios."""
+def plot_efficient_frontier(frontier, portfolios, mu, cov, highlight=None):
+    """Frontier line, the four single assets, and the five profile portfolios.
+
+    highlight: optional (volatility, expected return, label) to ring one portfolio, e.g. the client's.
+    """
     fig, ax = plt.subplots(figsize=(8, 5.2), facecolor=SURFACE)
     _style_axes(ax)
 
@@ -57,6 +60,12 @@ def plot_efficient_frontier(frontier, portfolios, mu, cov):
         ax.annotate(PROFILES[level].name, (portfolio.volatility, portfolio.expected_return),
                     xytext=(-8, 8), textcoords="offset points", ha="right", fontsize=9, color=INK,
                     fontweight="bold")
+
+    if highlight is not None:
+        vol, ret, label = highlight
+        ax.scatter(vol, ret, s=420, facecolor="none", edgecolor=HIGHLIGHT, linewidth=2.5, zorder=5)
+        ax.annotate(label, (vol, ret), xytext=(14, -14), textcoords="offset points", fontsize=9.5,
+                    color=INK, fontweight="bold")
 
     ax.xaxis.set_major_locator(MultipleLocator(0.02))
     ax.xaxis.set_major_formatter(PercentFormatter(1.0, decimals=0))

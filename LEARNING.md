@@ -497,3 +497,103 @@ client answers ──► score_client()            → risk profile + cash floor
 > wording and disclosures, plus record-keeping of what was shown to the
 > client. Technically I'd add versioned data and assumptions, so any past
 > proposal could be reproduced exactly.
+
+---
+
+## Phase 5: The Streamlit app
+
+### What the code does
+
+Run it from the project root with `streamlit run app/streamlit_app.py`.
+
+```
+app/
+  streamlit_app.py      # entry point: page setup, sidebar, navigation between the 4 pages
+  common.py             # shared helpers: cached data, current proposal, chart display
+  views/
+    questionnaire.py    # 1. Client Questionnaire
+    portfolio.py        # 2. Recommended Portfolio
+    stress_tests.py     # 3. Stress Tests
+    download.py         # 4. Download Proposal
+.streamlit/config.toml  # light theme matching the chart colours
+```
+
+1. **Client Questionnaire.** The relationship manager can start from a blank
+   form or load one of the three fictional example clients. Part A (attitude
+   to risk) and Part B (ability to take risk) sit side by side. On submit, the
+   app checks every question is answered, then calls `build_proposal()`. The
+   result table shows *how* the profile was decided: the highest level allowed
+   by attitude, by horizon and by loss limit, and the final level (the lowest).
+2. **Recommended Portfolio.** Key numbers, the donut chart, and a weights
+   table with USD amounts and each asset's *allowed range*, so the RM can see
+   which limits bind. Then the plain-English explanation, the efficient
+   frontier with the client's portfolio ringed, and an expander with the
+   return assumptions and the shrunk correlation matrix.
+3. **Stress Tests.** The crisis table, a chart of the client's portfolio vs
+   100% shares in each crisis, everyday risk measures (realised volatility,
+   VaR, expected shortfall, also in USD), the rolling stock–bond correlation
+   with the 2022 explanation, and a comparison of all five profiles.
+4. **Download Proposal.** A short summary and a button that downloads the
+   same one-page PDF as in Phase 4.
+
+**How the pages share data:** Streamlit re-runs the whole script on every
+click. So the client's `Proposal` is stored in `st.session_state`, which
+survives re-runs and page changes. Pages 2–4 call `require_proposal()`. If no
+client has been scored yet, it shows a message and a link back to the
+questionnaire instead of crashing.
+
+**Caching:** `@st.cache_data` stores the price data, the covariance matrix,
+the frontier and the five profile portfolios after the first run, so clicking
+around is fast.
+
+**Testing:** `tests/test_app.py` uses Streamlit's `AppTest` to load an example
+client, submit the form, open every page and check for errors. It also checks
+that submitting a blank form shows an error. I also clicked through the real
+app in a headless browser (Playwright) and checked the screenshots.
+
+### Why these choices
+
+- **The app is a thin layer.** All the finance logic lives in the `riskfit`
+  package, which has its own tests. The app only collects inputs and displays
+  results. So the same logic serves the app, the PDF and the tests, and the
+  numbers on screen always match the PDF.
+- **Show *why*, not just *what*.** The "highest level allowed" table and the
+  "allowed range" column let an RM explain the result to a client or a
+  compliance reviewer. In private banking, being able to justify a
+  recommendation matters as much as the recommendation itself.
+- **Matplotlib charts, shared with the PDF**, so the client sees the same
+  visuals on screen and on paper.
+- **A form (`st.form`)** so the app only recalculates when the RM presses the
+  button, not after every single answer.
+- **No blank defaults.** For a new client, every radio button starts empty
+  and must be answered. Defaulting to an answer could quietly put a client in
+  the wrong profile, which would be a suitability failure.
+
+### Interview questions
+
+**Q1. How does the app keep track of the client between pages?**
+> Streamlit re-runs the page script from top to bottom on every interaction,
+> so normal variables are lost. I store the client's `Proposal` object in
+> `st.session_state`, which lasts for the browser session. The questionnaire
+> page creates it, and the other pages read it. If someone opens the
+> portfolio page first, a helper function notices there's no proposal and
+> shows a link back to the questionnaire. I also cache the expensive,
+> client-independent work, such as loading prices and estimating the
+> covariance matrix, with `@st.cache_data`, so it only runs once.
+
+**Q2. Why did you separate the app from the calculation code?**
+> So each part can be tested and reused on its own. The `riskfit` package
+> does scoring, optimisation, stress tests and the PDF, and has over 90 unit
+> tests. The app is just a user interface on top. The PDF generator and the
+> app call the same `build_proposal()` function, so the numbers can't
+> disagree. If the bank wanted a different front end later, for example
+> inside their CRM, the core logic could be reused unchanged.
+
+**Q3. What would you add before relationship managers used this for real?**
+> Log-in and an audit trail: who ran which proposal, when, with which data
+> and assumptions. A record of the client's signed answers. Validation
+> against the client's full financial situation and existing holdings, not
+> just one pot of money. The bank's approved product list instead of ETF
+> proxies. Hosting inside the bank's network, because client data is
+> confidential under Hong Kong's privacy law (PDPO). Finally, a review by
+> compliance of all client-facing wording.
