@@ -1,0 +1,16 @@
+{
+  "name": "Mr Chan Tai Man",
+  "age": 62,
+  "investment_amount": 800000,
+  "answers": {
+    "objective": 1,
+    "experience": 1,
+    "reaction": 1,
+    "trade_off": 1,
+    "volatility_comfort": 1
+  },
+  "horizon": 2,
+  "max_loss": 0,
+  "liquidity": 1,
+  "notes": "Retiring next year. Wants to protect his savings and may draw on them for living costs."
+}
