@@ -3,6 +3,14 @@
 This file explains each part of the project, why it was built that way, and the
 questions an interviewer might ask about it. One section is added per phase.
 
+**Contents**
+1. [Data and questionnaire scoring](#phase-1-data-and-questionnaire-scoring)
+2. [Optimiser and efficient frontier](#phase-2-optimiser-and-efficient-frontier)
+3. [Stress tests and risk measures](#phase-3-stress-tests-and-risk-measures)
+4. [The one-page PDF proposal](#phase-4-the-one-page-pdf-proposal)
+5. [The Streamlit app](#phase-5-the-streamlit-app)
+6. [Testing, the README, and presenting the project](#phase-6-testing-the-readme-and-presenting-the-project)
+
 ---
 
 ## Phase 1: Data and questionnaire scoring
@@ -597,3 +605,81 @@ app in a headless browser (Playwright) and checked the screenshots.
 > proxies. Hosting inside the bank's network, because client data is
 > confidential under Hong Kong's privacy law (PDPO). Finally, a review by
 > compliance of all client-facing wording.
+
+---
+
+## Phase 6: Testing, the README, and presenting the project
+
+### What was done
+
+- **README.md**, written for recruiters: a one-paragraph summary, screenshots
+  of the app and a sample PDF, how to run it, the methodology, key results
+  (the 2008 vs 2022 story), and an honest list of limitations.
+- **Screenshots** in `docs/screenshots/`, captured automatically from the
+  running app with Playwright, a browser-automation tool.
+- **Final test pass: 97 tests**, all passing (`pytest`).
+
+### How the project is tested
+
+The tests are layered, from small and exact to broad and realistic:
+
+| Layer | Example | What it protects against |
+|---|---|---|
+| Hand-checked maths | 100 → 120 → 90 must give a −25% drawdown; recovery is exactly 5 days | Formula mistakes |
+| Rules | A short horizon must cap an aggressive client; band edges 8/9, 12/13… | Wrong suitability outcomes |
+| Invariants | For every profile: weights sum to 1, limits respected, volatility ≤ target, cash ≥ liquidity floor | Optimiser bugs and edge cases |
+| Calibration on real data | Each profile's worst crisis drawdown is within its loss limit | The questionnaire promising something the portfolio can't deliver |
+| Output | Every example PDF is exactly one page and contains the disclaimer | Layout changes silently breaking the proposal |
+| App smoke test | Submit an example client and open every page with no errors | Broken pages before a demo |
+
+The unit tests use small hand-made data, so they are fast and don't need the
+internet. The tests that need real data skip themselves if the price cache is
+missing.
+
+### How to present this project in 60 seconds
+
+> "RiskFit is a tool that turns a client's risk questionnaire into a one-page
+> portfolio proposal. It separates *willingness* to take risk from *ability*
+> to take risk, using horizon and maximum loss, and takes the lower of the
+> two. It then builds a four-asset portfolio with constrained mean-variance
+> optimisation. I used forward-looking return assumptions and Ledoit-Wolf
+> shrinkage, so it doesn't just chase past returns. Next it stress-tests the
+> portfolio on 2008, COVID and 2022. The most interesting finding was 2022:
+> because inflation pushed bonds and stocks down together, a Balanced
+> portfolio lost about as much as in the COVID crash. The stress tests also
+> showed that my first questionnaire was too optimistic about losses, so I
+> recalibrated it. The output is a plain-English PDF for the client, with a
+> Streamlit app around it and 97 tests."
+
+### Interview questions
+
+**Q1. Walk me through one design decision you changed because of what the data showed.**
+> Three, actually. First, standard Ledoit-Wolf made cash look about four
+> times riskier than it really is, so I applied the shrinkage to
+> correlations only. Second, the optimiser held no gold at all. I added a
+> small strategic floor, measured its cost, and checked in the stress tests
+> that it helped a little. Third, and most important, the stress tests showed
+> my Conservative portfolio fell 12% in 2008, while the questionnaire placed
+> clients who said "up to 5% loss" into it. I recalibrated the loss bands and
+> added a test that re-checks this against real data. In a suitability
+> context, a promise the portfolio can't keep is the worst kind of bug.
+
+**Q2. What would you do with more time?**
+> Add forward-looking scenarios, such as "rates +200bp" or "stagflation", to
+> cover risks the last 20 years don't contain. Use a wider asset universe:
+> regional equities, Asian bonds, and a proper global equity index once I
+> accept a shorter history. Include fees, and test realistic rebalancing,
+> such as quarterly or when weights drift by 5%. Test how sensitive the
+> weights are to the return assumptions, e.g. with resampling or
+> Black-Litterman. On the product side, add multi-currency support and a
+> proper audit trail.
+
+**Q3. How does this project relate to a role in private wealth management?**
+> It mirrors the RM workflow: understand the client, match them to a
+> suitable risk profile, propose an allocation, explain the risks honestly,
+> and document it. Building it forced me to think about the parts that matter
+> in practice. Suitability means willingness vs ability. Expectations should
+> be a range, not a promise. Risk should be shown in dollars and recovery
+> time, not just percentages. And clients should be told that diversification
+> can fail, as it did in 2022. I'd see this as a way to show I can combine
+> the analytics with clear client communication.
