@@ -5,8 +5,8 @@ from io import BytesIO
 
 import streamlit as st
 
-from common import DISCLAIMER, require_proposal, usd
-from riskfit.config import ASSET_LABELS
+from common import DISCLAIMER, require_proposal
+from riskfit.config import asset_label
 from riskfit.report.pdf import build_pdf
 
 proposal = require_proposal()
@@ -18,9 +18,9 @@ st.write("A one-page PDF written for the client: their profile, the recommended 
 
 name, worst = proposal.worst
 st.markdown(
-    f"- **Client:** {client.name}, age {client.age}, investing {usd(client.investment_amount)}\n"
+    f"- **Client:** {client.name}, age {client.age}, investing {proposal.money(client.investment_amount)}\n"
     f"- **Profile:** {profile.profile.name}\n"
-    f"- **Allocation:** " + ", ".join(f"{ASSET_LABELS[a]} {w:.0%}" for a, w in portfolio.weights.items()
+    f"- **Allocation:** " + ", ".join(f"{asset_label(a, client.equity_style)} {w:.0%}" for a, w in portfolio.weights.items()
                                        if w >= 0.005) + "\n"
     f"- **Worst historical fall:** {worst.max_drawdown:.0%} ({name})"
 )
@@ -34,7 +34,7 @@ def pdf_bytes(_proposal, cache_key):
     return buffer.getvalue()
 
 
-cache_key = (client.name, client.investment_amount, tuple(client.answers.values()),
+cache_key = (client.name, client.investment_amount, client.currency, client.equity_style, tuple(client.answers.values()),
              client.horizon, client.max_loss, client.liquidity, str(proposal.created))
 file_name = "riskfit_proposal_" + re.sub(r"[^a-z0-9]+", "_", client.name.lower()).strip("_") + ".pdf"
 st.download_button("Download PDF proposal", data=pdf_bytes(proposal, cache_key), file_name=file_name,

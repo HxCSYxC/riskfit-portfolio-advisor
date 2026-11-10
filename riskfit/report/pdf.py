@@ -16,7 +16,7 @@ from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from riskfit.config import ASSET_LABELS, ASSET_ORDER, ASSETS
+from riskfit.config import ASSET_ORDER, ASSETS, EQUITY_STYLES, asset_label, proxy_description
 from riskfit.proposal import explain_allocation, pct
 from riskfit.report.charts import ASSET_COLOURS, plot_allocation_donut, plot_scenario_paths
 from riskfit.stress_test.scenarios import format_recovery
@@ -35,8 +35,8 @@ CONTENT_W = PAGE_W - 2 * MARGIN
 DISCLAIMER = (
     "<b>For illustration only. Not investment advice.</b> This proposal was produced by RiskFit, a student "
     "portfolio project, for a fictional client. It is not an offer or recommendation to buy or sell any "
-    "security. Figures use historical ETF data as stand-ins for each asset class and ignore fees, taxes and "
-    "currency effects (USD base; HKD is pegged to USD). Expected returns are assumptions, not promises. "
+    "security. Figures use historical ETF data as stand-ins for each asset class and ignore taxes and "
+    "currency effects (analysis in USD; HKD is pegged to USD). Expected returns are assumptions, not promises. "
     "Past performance is not a reliable indicator of future results, and the value of investments can fall "
     "as well as rise."
 )
@@ -62,13 +62,6 @@ def _styles():
     }
 
 
-def _usd(amount, round_to=1):
-    """'USD 1,500,000'. Use round_to=1000 for estimates, so they don't look falsely precise."""
-    amount = round(amount / round_to) * round_to
-    sign = "-" if amount < 0 else ""
-    return f"{sign}USD {abs(amount):,.0f}"
-
-
 def _swatch(hex_colour, size=7):
     d = Drawing(size, size)
     d.add(Rect(0, 0, size, size, fillColor=colors.HexColor(hex_colour), strokeColor=None))
@@ -86,7 +79,7 @@ def _donut_image(weights, width):
 def _profile_block(proposal, s):
     p, c = proposal.profile, proposal.client
     facts = [
-        ("Investment amount", _usd(c.investment_amount)),
+        ("Investment amount", proposal.money(c.investment_amount)),
         ("Attitude to risk score", f"{p.tolerance_score} out of 25"),
         ("Investment horizon", p.horizon),
         ("Largest loss you can accept", p.max_loss),
@@ -112,25 +105,26 @@ def _profile_block(proposal, s):
 def _allocation_block(proposal, s):
     w = proposal.portfolio.weights
     amount = proposal.client.investment_amount
+    style = proposal.client.equity_style
     rows = [[None, Paragraph("<b>Asset class</b>", s["cell"]), Paragraph("<b>Weight</b>", s["cell"]),
              Paragraph("<b>Amount</b>", s["cell"])]]
     for asset in ASSET_ORDER:
         rows.append([
             _swatch(ASSET_COLOURS[asset]),
-            Paragraph(f"{ASSET_LABELS[asset]}<br/><font size=6.5 color='#52514e'>{ASSETS[asset]} ETF</font>",
-                      s["cell"]),
+            Paragraph(f"{asset_label(asset, style)}<br/><font size=6.5 color='#52514e'>"
+                      f"{proxy_description(asset, style)}</font>", s["cell"]),
             Paragraph(f"{w[asset]:.0%}", s["cell_b"]),
-            Paragraph(_usd(w[asset] * amount, 1000), s["cell"]),
+            Paragraph(proposal.money(w[asset] * amount, 1000), s["cell"]),
         ])
-    table = Table(rows, colWidths=[4 * mm, 30 * mm, 12 * mm, 24 * mm])
+    table = Table(rows, colWidths=[4 * mm, 38 * mm, 11 * mm, 25 * mm])
     table.setStyle(TableStyle([
         ("LINEBELOW", (0, 0), (-1, -1), 0.5, LINE),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 1.5), ("RIGHTPADDING", (0, 0), (-1, -1), 1.5),
         ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
     ]))
-    donut = _donut_image(w, 30 * mm)
-    inner = Table([[donut, table]], colWidths=[33 * mm, 71 * mm])
+    donut = _donut_image(w, 26 * mm)
+    inner = Table([[donut, table]], colWidths=[28 * mm, 78 * mm])
     inner.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0),
                                ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
     return [Paragraph("Recommended allocation", s["h"]), inner]
@@ -141,12 +135,12 @@ def _tiles(proposal, s):
     name, worst = proposal.worst
     loss_usd = -worst.max_drawdown * proposal.client.investment_amount
     tiles = [
-        ("Expected return per year", f"{proposal.portfolio.expected_return:.1%}",
-         "Long-term assumption, before fees"),
+        ("Expected return per year", f"{proposal.expected_return_net:.1%}",
+         f"Long-term assumption, after an assumed {proposal.annual_fee:.0%} yearly fee"),
         ("Typical yearly range", f"{pct(low, signed=True)} to {pct(high, signed=True)}",
          "About 2 years in 3 should fall in this range"),
         ("Worst historical fall", f"{worst.max_drawdown:.0%}",
-         f"{name}: about {_usd(loss_usd, 1000)} at the lowest point; "
+         f"{name}: about {proposal.money(loss_usd, 1000)} at the lowest point; "
          f"back to its previous peak in {format_recovery(worst.recovery_days)}"),
     ]
     cells = [[Paragraph(label, s["tile_label"]), Paragraph(value, s["tile_value"]), Paragraph(note, s["small"])]
@@ -164,7 +158,7 @@ def _tiles(proposal, s):
 
 def _stress_table(proposal, s):
     amount = proposal.client.investment_amount
-    header = ["Crisis", "Period", "Return over the crisis", "Largest fall", "Largest fall in USD",
+    header = ["Crisis", "Period", "Return over the crisis", "Largest fall", f"Largest fall in {proposal.client.currency}",
               "Time to recover"]
     rows = [[Paragraph(f"<b>{h}</b>", s["cell"]) for h in header]]
     for name, r in proposal.stress.iterrows():
@@ -173,7 +167,7 @@ def _stress_table(proposal, s):
             Paragraph(f"{r.start:%b %Y} – {r.end:%b %Y}", s["cell"]),
             Paragraph(f"{r.total_return:+.1%}", s["cell"]),
             Paragraph(f"<b>{r.max_drawdown:.1%}</b>", s["cell"]),
-            Paragraph(_usd(r.max_drawdown * amount, 1000), s["cell"]),
+            Paragraph(proposal.money(r.max_drawdown * amount, 1000), s["cell"]),
             Paragraph(format_recovery(r.recovery_days), s["cell"]),
         ])
     table = Table(rows, colWidths=[44 * mm, 32 * mm, 26 * mm, 22 * mm, 30 * mm, CONTENT_W - 154 * mm])
@@ -191,6 +185,10 @@ def _stress_table(proposal, s):
         _crisis_chart(proposal),
         Paragraph("Value of 100 invested at the start of each crisis. 2022 is a warning: inflation pushed shares "
                   "and bonds down together, so bonds gave little protection that year.", s["small"]),
+        Spacer(1, 2),
+        Paragraph("<b>What if?</b> Estimated one-off effect of events not in this history: "
+                  + "; ".join(f"{name.lower()}: {r.portfolio_return:+.0%}"
+                              for name, r in proposal.hypothetical.iterrows()) + ".", s["small"]),
     ]
 
 
@@ -219,9 +217,10 @@ def build_pdf(proposal, output):
     top.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0),
                              ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
 
-    data_note = (f"<br/>Data: daily total-return prices of {', '.join(ASSETS.values())} from "
+    tickers = list(EQUITY_STYLES[c.equity_style]["blend"]) + list(ASSETS.values())
+    data_note = (f"<br/>Data: daily total-return prices of {', '.join(tickers)} from "
                  f"{proposal.data_start:%d %b %Y} to {proposal.data_end:%d %b %Y} (Yahoo Finance). "
-                 "Portfolios are rebalanced daily in the historical tests.")
+                 f"Historical tests assume {proposal.rebalance} rebalancing and a {proposal.annual_fee:.0%} yearly fee.")
     disclaimer = Table([[Paragraph(DISCLAIMER + data_note, s["small"])]], colWidths=[CONTENT_W])
     disclaimer.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.75, INK_2), ("LEFTPADDING", (0, 0), (-1, -1), 6),
                                     ("RIGHTPADDING", (0, 0), (-1, -1), 6), ("TOPPADDING", (0, 0), (-1, -1), 5),

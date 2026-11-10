@@ -47,9 +47,10 @@ def test_to_returns_rejects_unknown_frequency():
         loader.to_returns(make_prices(), "W")
 
 
-def test_load_prices_uses_cache_and_renames_to_asset_classes(tmp_path, monkeypatch):
+def test_load_prices_uses_cache_and_returns_asset_classes(tmp_path, monkeypatch):
     dates = pd.bdate_range("2007-01-01", periods=5)
-    fake = pd.DataFrame({t: np.linspace(10, 11, 5) for t in ["SPY", "AGG", "BIL", "GLD"]}, index=dates)
+    tickers = ["SPY", "EFA", "EEM", "EWH", "AGG", "BIL", "GLD"]
+    fake = pd.DataFrame({t: np.linspace(10, 11, 5) for t in tickers}, index=dates)
     calls = []
 
     def fake_download(tickers, start=None, end=None):
@@ -66,6 +67,25 @@ def test_load_prices_uses_cache_and_renames_to_asset_classes(tmp_path, monkeypat
     assert cache.exists()
     assert list(first.columns) == ["equities", "bonds", "cash", "gold"]
     pd.testing.assert_frame_equal(first, second)
+    for style in ["global", "hk_tilt"]:              # every ETF moves the same, so any blend does too
+        equities = loader.load_prices(style, path=cache)["equities"]
+        assert equities.iloc[-1] / equities.iloc[0] == pytest.approx(1.1)
+
+
+def test_blend_index_is_weighted_average_of_returns():
+    dates = pd.bdate_range("2020-01-01", periods=3)
+    prices = pd.DataFrame({"A": [100.0, 110.0, 110.0], "B": [50.0, 50.0, 45.0]}, index=dates)
+    index = loader.blend_index(prices, {"A": 0.6, "B": 0.4})
+    # day 1: 0.6 * 10% = +6%   day 2: 0.4 * -10% = -4%
+    assert index.tolist() == pytest.approx([100.0, 106.0, 106.0 * 0.96])
+
+
+def test_blend_index_starts_when_all_etfs_exist_and_checks_weights():
+    dates = pd.bdate_range("2020-01-01", periods=4)
+    prices = pd.DataFrame({"A": [1.0, 1.0, 1.0, 1.0], "B": [np.nan, 2.0, 2.0, 2.0]}, index=dates)
+    assert loader.blend_index(prices, {"A": 0.5, "B": 0.5}).index[0] == dates[1]
+    with pytest.raises(ValueError):
+        loader.blend_index(prices, {"A": 0.5, "B": 0.6})
 
 
 def test_availability_report_flags_2008_coverage():

@@ -1,8 +1,8 @@
 """Historical stress scenarios and the summary tables built from them.
 
 Each scenario replays the portfolio's current weights through a real crisis.
-The portfolio is assumed to be rebalanced to its target weights every day,
-with no fees or taxes.
+By default the portfolio is rebalanced to its target weights every quarter and
+pays a 1% annual fee (see config.py). Taxes are ignored.
 
 Run this file to print the results for the five profiles and save the charts:
     python -m riskfit.stress_test.scenarios
@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from riskfit.config import ANNUAL_FEE, REBALANCE
 from riskfit.stress_test import metrics
 
 
@@ -65,15 +66,15 @@ def run_scenario(daily_portfolio_returns, scenario):
     }
 
 
-def stress_test(asset_returns, weights, scenarios=SCENARIOS):
+def stress_test(asset_returns, weights, scenarios=SCENARIOS, rebalance=REBALANCE, annual_fee=ANNUAL_FEE):
     """One row per scenario for the given portfolio weights."""
-    port = metrics.portfolio_returns(asset_returns, weights)
+    port = metrics.portfolio_returns(asset_returns, weights, rebalance, annual_fee)
     return pd.DataFrame([run_scenario(port, s) for s in scenarios]).set_index("scenario")
 
 
-def risk_summary(asset_returns, weights, level=0.95):
+def risk_summary(asset_returns, weights, level=0.95, rebalance=REBALANCE, annual_fee=ANNUAL_FEE):
     """Full-period risk measures from daily returns."""
-    port = metrics.portfolio_returns(asset_returns, weights)
+    port = metrics.portfolio_returns(asset_returns, weights, rebalance, annual_fee)
     return {
         "annual_return": metrics.annualised_return(port),
         "annual_volatility": metrics.annualised_volatility(port),

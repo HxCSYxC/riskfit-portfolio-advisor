@@ -1,7 +1,7 @@
 {
   "name": "Ms Lee Ka Yan",
   "age": 41,
-  "investment_amount": 1500000,
+  "investment_amount": 12000000,
   "answers": {
     "objective": 3,
     "experience": 3,
@@ -12,5 +12,7 @@
   "horizon": 4,
   "max_loss": 2,
   "liquidity": 0,
-  "notes": "Senior manager saving for retirement in about 20 years. Comfortable with markets, but would not accept losing more than about a third."
+  "notes": "Senior manager saving for retirement in about 20 years. Comfortable with markets, but would not accept losing more than about a third. Wants some exposure to Hong Kong shares.",
+  "currency": "HKD",
+  "equity_style": "hk_tilt"
 }

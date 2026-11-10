@@ -133,3 +133,31 @@ def test_profiles_on_real_data_are_valid():
     for level, result in build_all_profiles(mu, cov).items():
         assert_valid_weights(result.weights, profile_bounds(PROFILES[level]))
         assert result.target_met
+
+
+def test_sensitivity_cases_all_give_valid_portfolios(toy_inputs):
+    from riskfit.optimiser.sensitivity import CASES, assumption_sensitivity
+
+    _, cov = toy_inputs
+    profile = PROFILES[3]
+    table = assumption_sensitivity(profile, cov)
+    assert list(table.index) == list(CASES)
+    for _, row in table.iterrows():
+        assert_valid_weights(row[ASSETS], profile_bounds(profile))
+
+
+def test_higher_equity_premium_never_lowers_expected_return(toy_inputs):
+    from riskfit.optimiser.sensitivity import assumption_sensitivity
+
+    _, cov = toy_inputs
+    table = assumption_sensitivity(PROFILES[3], cov)
+    assert (table.loc["Equity premium 5% (higher)", "expected_return"]
+            > table.loc["Base case", "expected_return"]
+            > table.loc["Equity premium 3% (lower)", "expected_return"])
+
+
+def test_expected_returns_function_matches_defaults():
+    from riskfit.optimiser.assumptions import EXPECTED_RETURNS, expected_returns
+
+    pd.testing.assert_series_equal(expected_returns(), EXPECTED_RETURNS)
+    assert expected_returns(equity_risk_premium=0.05)["equities"] == pytest.approx(0.08)

@@ -11,14 +11,33 @@ import pandas as pd
 TRADING_DAYS = 252
 
 
-def portfolio_returns(asset_returns, weights):
-    """Daily returns of a portfolio rebalanced back to its target weights every day.
+def portfolio_returns(asset_returns, weights, rebalance="daily", annual_fee=0.0):
+    """Daily returns of a portfolio.
 
     asset_returns: DataFrame, one column per asset
-    weights: Series or dict, asset -> weight
+    weights: Series or dict, asset -> target weight
+    rebalance: "daily" keeps the target weights every day. "quarterly" lets the weights
+               drift with the markets and resets them on the first trading day of each quarter.
+    annual_fee: yearly cost (0.01 = 1%), taken off in equal daily slices.
     """
     weights = pd.Series(weights, dtype=float)
-    return asset_returns[weights.index].dropna() @ weights
+    returns = asset_returns[weights.index].dropna()
+    if rebalance == "daily":
+        port = returns @ weights
+    elif rebalance == "quarterly":
+        target = weights.values
+        current = target.copy()
+        quarter = returns.index.quarter
+        out = np.empty(len(returns))
+        for i, day in enumerate(returns.values):
+            if i > 0 and quarter[i] != quarter[i - 1]:
+                current = target.copy()                        # rebalance at the start of a new quarter
+            out[i] = current @ day
+            current = current * (1 + day) / (1 + out[i])       # weights drift with each asset's return
+        port = pd.Series(out, index=returns.index)
+    else:
+        raise ValueError("rebalance must be 'daily' or 'quarterly'")
+    return port - annual_fee / TRADING_DAYS
 
 
 def wealth_index(returns, start_value=1.0):

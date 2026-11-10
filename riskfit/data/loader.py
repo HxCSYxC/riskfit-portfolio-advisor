@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from riskfit.config import ASSETS, CACHE_FILE, DATA_START
+from riskfit.config import ASSETS, CACHE_FILE, DATA_START, DEFAULT_EQUITY_STYLE, EQUITY_STYLES, all_tickers
 
 # The 2008 stress test starts here, so every ETF must have data by this date.
 GFC_START = pd.Timestamp("2007-10-09")
@@ -61,19 +61,43 @@ def read_cache(path=CACHE_FILE):
     return pd.read_csv(path, index_col="date", parse_dates=True)
 
 
-def load_prices(refresh=False, path=CACHE_FILE):
-    """Return cleaned prices with one column per asset class (equities, bonds, cash, gold).
+def load_raw_prices(refresh=False, path=CACHE_FILE):
+    """Cleaned prices with one column per ETF ticker.
 
     Reads the local CSV cache when it exists, so the app does not download every run.
     """
     path = Path(path)
     if refresh or not path.exists():
-        tickers = list(ASSETS.values())
-        prices = clean_prices(download_prices(tickers))
+        prices = clean_prices(download_prices(all_tickers()))
         save_cache(prices, path)
-    prices = read_cache(path)
-    ticker_to_asset = {ticker: asset for asset, ticker in ASSETS.items()}
-    return prices.rename(columns=ticker_to_asset)[list(ASSETS)]
+    return read_cache(path)
+
+
+def blend_index(prices, blend):
+    """Price index of a fixed-weight blend of ETFs, kept at its target weights every day.
+
+    blend: ticker -> weight (weights must add up to 1).
+    The index starts at 100 on the first day all of its ETFs have a price.
+    """
+    if abs(sum(blend.values()) - 1) > 1e-9:
+        raise ValueError("Blend weights must add up to 1")
+    returns = prices[list(blend)].dropna().pct_change().dropna()
+    blended = returns @ pd.Series(blend)
+    index = 100 * (1 + blended).cumprod()
+    first_day = prices[list(blend)].dropna().index[0]
+    return pd.concat([pd.Series([100.0], index=[first_day]), index])
+
+
+def load_prices(equity_style=DEFAULT_EQUITY_STYLE, refresh=False, path=CACHE_FILE):
+    """Prices with one column per asset class (equities, bonds, cash, gold).
+
+    Equities are the blended index for the chosen style ('global' or 'hk_tilt').
+    """
+    raw = load_raw_prices(refresh=refresh, path=path)
+    prices = pd.DataFrame({"equities": blend_index(raw, EQUITY_STYLES[equity_style]["blend"])})
+    for asset, ticker in ASSETS.items():
+        prices[asset] = raw[ticker]
+    return prices.reindex(raw.index)
 
 
 def common_sample(prices):
@@ -110,6 +134,7 @@ if __name__ == "__main__":
     parser.add_argument("--refresh", action="store_true", help="force a fresh download")
     args = parser.parse_args()
 
-    data = load_prices(refresh=args.refresh)
+    raw = load_raw_prices(refresh=args.refresh)
     print(f"Saved to {CACHE_FILE}")
-    print(availability_report(data))
+    print(availability_report(raw))
+    print(availability_report(load_prices()))

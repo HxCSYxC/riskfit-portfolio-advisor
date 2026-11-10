@@ -8,16 +8,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from riskfit.data.loader import load_prices  # noqa: E402
 from riskfit.proposal import Client, build_proposal  # noqa: E402
 from riskfit.report.pdf import build_pdf  # noqa: E402
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 
 if __name__ == "__main__":
-    prices = load_prices()
     for path in sorted(EXAMPLES.glob("*.json")):
-        proposal = build_proposal(Client.from_json(path), prices)
+        proposal = build_proposal(Client.from_json(path))
         output = path.with_suffix(".pdf")
         build_pdf(proposal, str(output))
         w = proposal.portfolio.weights
