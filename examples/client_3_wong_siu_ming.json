@@ -12,5 +12,7 @@
   "horizon": 4,
   "max_loss": 4,
   "liquidity": 2,
-  "notes": "Entrepreneur after selling his company. Long horizon and high risk appetite, but may use part of the money for a flat deposit next year."
+  "notes": "Entrepreneur after selling his company. Long horizon and high risk appetite, but may use part of the money for a flat deposit next year.",
+  "currency": "USD",
+  "equity_style": "global"
 }

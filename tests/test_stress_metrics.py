@@ -71,7 +71,7 @@ def test_stress_test_uses_scenario_windows():
     dates = pd.bdate_range("2021-12-01", "2023-06-30")
     assets = pd.DataFrame({"x": -0.001, "y": 0.0}, index=dates)
     scenario = Scenario("t", "Test", "2022-01-01", "2022-12-31", "")
-    table = stress_test(assets, {"x": 0.5, "y": 0.5}, scenarios=[scenario])
+    table = stress_test(assets, {"x": 0.5, "y": 0.5}, scenarios=[scenario], rebalance="daily", annual_fee=0.0)
     row = table.loc["Test"]
     n_days = len(dates[(dates >= "2022-01-01") & (dates <= "2022-12-31")])
     assert row.total_return == pytest.approx(0.9995 ** n_days - 1)
@@ -85,15 +85,70 @@ def test_format_recovery(days, text):
     assert format_recovery(days) == text
 
 
-def test_profiles_stay_within_their_loss_limits():
-    """Calibration check on real data: each profile's worst crisis drawdown must fit its loss limit."""
+def test_quarterly_rebalancing_lets_weights_drift():
+    # Asset a doubles on day 1, then both assets gain 10% on day 2 (same quarter, so no rebalance).
+    assets = pd.DataFrame({"a": [1.0, 0.10], "b": [0.0, 0.10]}, index=pd.to_datetime(["2020-01-02", "2020-01-03"]))
+    drift = metrics.portfolio_returns(assets, {"a": 0.5, "b": 0.5}, rebalance="quarterly")
+    assert drift.tolist() == pytest.approx([0.5, 0.10])
+
+    # If only a gains on day 2, the drifted weight of a (1.0 / 1.5 = 2/3) matters:
+    assets.iloc[1] = [0.30, 0.0]
+    drift = metrics.portfolio_returns(assets, {"a": 0.5, "b": 0.5}, rebalance="quarterly")
+    daily = metrics.portfolio_returns(assets, {"a": 0.5, "b": 0.5}, rebalance="daily")
+    assert drift.iloc[1] == pytest.approx(0.30 * 2 / 3)
+    assert daily.iloc[1] == pytest.approx(0.30 * 0.5)
+
+
+def test_quarterly_rebalancing_resets_weights_in_a_new_quarter():
+    assets = pd.DataFrame({"a": [1.0, 0.30], "b": [0.0, 0.0]}, index=pd.to_datetime(["2020-03-31", "2020-04-01"]))
+    port = metrics.portfolio_returns(assets, {"a": 0.5, "b": 0.5}, rebalance="quarterly")
+    assert port.iloc[1] == pytest.approx(0.30 * 0.5)       # back at 50/50 on the first day of Q2
+
+
+def test_annual_fee_is_spread_over_trading_days():
+    assets = pd.DataFrame({"a": [0.0] * 252}, index=pd.bdate_range("2021-01-01", periods=252))
+    port = metrics.portfolio_returns(assets, {"a": 1.0}, annual_fee=0.01)
+    assert port.sum() == pytest.approx(-0.01)
+    assert metrics.total_return(port) == pytest.approx(-0.00995, abs=1e-4)
+
+
+def test_unknown_rebalance_rule_raises():
+    assets = pd.DataFrame({"a": [0.0]}, index=pd.bdate_range("2021-01-01", periods=1))
+    with pytest.raises(ValueError):
+        metrics.portfolio_returns(assets, {"a": 1.0}, rebalance="monthly")
+
+
+def test_hypothetical_shock_is_weighted_sum():
+    from riskfit.stress_test.hypothetical import Shock, hypothetical_test
+
+    shock = Shock("t", "Test", {"equities": -0.30, "bonds": -0.10, "cash": 0.0, "gold": 0.15}, "")
+    weights = {"equities": 0.5, "bonds": 0.4, "cash": 0.05, "gold": 0.05}
+    table = hypothetical_test(weights, [shock])
+    assert table.loc["Test", "portfolio_return"] == pytest.approx(-0.15 - 0.04 + 0.0075)
+
+
+def test_hypothetical_scenarios_hurt_riskier_profiles_more_in_a_recession():
+    from riskfit.stress_test.hypothetical import hypothetical_test
+
+    cautious = hypothetical_test({"equities": 0.2, "bonds": 0.4, "cash": 0.35, "gold": 0.05})
+    bold = hypothetical_test({"equities": 0.9, "bonds": 0.05, "cash": 0.0, "gold": 0.05})
+    assert bold.loc["Severe recession", "portfolio_return"] < cautious.loc["Severe recession", "portfolio_return"]
+    assert len(cautious) == 3
+
+
+@pytest.mark.parametrize("equity_style", ["global", "hk_tilt"])
+def test_profiles_stay_within_their_loss_limits(equity_style):
+    """Calibration check on real data: each profile's worst crisis drawdown must fit its loss limit.
+
+    Uses the default costs (1% fee, quarterly rebalancing) and both equity styles.
+    """
     from riskfit.config import ASSET_ORDER
     from riskfit.data.loader import common_sample, load_prices, to_returns
     from riskfit.optimiser.mean_variance import build_all_profiles, market_inputs
     from riskfit.risk_profile.profiles import PROFILES
 
     try:
-        prices = load_prices()
+        prices = load_prices(equity_style)
     except Exception:
         pytest.skip("price cache not available")
     daily = to_returns(common_sample(prices[ASSET_ORDER]), "D")

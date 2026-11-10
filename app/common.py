@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
 import matplotlib.pyplot as plt  # noqa: E402
 import streamlit as st  # noqa: E402
 
+from riskfit.config import DEFAULT_EQUITY_STYLE  # noqa: E402
 from riskfit.data.loader import load_prices  # noqa: E402
 from riskfit.optimiser.frontier import efficient_frontier  # noqa: E402
 from riskfit.optimiser.mean_variance import build_all_profiles, market_inputs  # noqa: E402
@@ -26,26 +27,27 @@ PAGES = {
 }
 
 
-# Data and model inputs are cached, so they load once per app session rather than on every click.
+# Data and model inputs are cached per equity style ("global" or "hk_tilt"),
+# so they load once per app session rather than on every click.
 @st.cache_data
-def get_prices():
-    return load_prices()
-
-
-@st.cache_data
-def get_market_inputs():
-    return market_inputs(get_prices())
+def get_prices(equity_style=DEFAULT_EQUITY_STYLE):
+    return load_prices(equity_style)
 
 
 @st.cache_data
-def get_frontier():
-    mu, cov = get_market_inputs()
+def get_market_inputs(equity_style=DEFAULT_EQUITY_STYLE):
+    return market_inputs(get_prices(equity_style))
+
+
+@st.cache_data
+def get_frontier(equity_style=DEFAULT_EQUITY_STYLE):
+    mu, cov = get_market_inputs(equity_style)
     return efficient_frontier(mu, cov)
 
 
 @st.cache_data
-def get_profile_portfolios():
-    mu, cov = get_market_inputs()
+def get_profile_portfolios(equity_style=DEFAULT_EQUITY_STYLE):
+    mu, cov = get_market_inputs(equity_style)
     return build_all_profiles(mu, cov)
 
 
@@ -65,8 +67,3 @@ def show_figure(fig, width="stretch", transparent=False):
     fig.savefig(buffer, format="png", dpi=200, bbox_inches="tight", transparent=transparent)
     plt.close(fig)
     st.image(buffer, width=width)
-
-
-def usd(amount):
-    sign = "-" if amount < 0 else ""
-    return f"{sign}USD {abs(amount):,.0f}"

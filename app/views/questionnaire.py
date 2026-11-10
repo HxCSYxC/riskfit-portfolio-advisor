@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from common import EXAMPLES_DIR, PAGES, get_prices
+from riskfit.config import CURRENCIES, EQUITY_STYLES, proxy_description
 from riskfit.proposal import Client, build_proposal
 from riskfit.risk_profile.profiles import PROFILES
 from riskfit.risk_profile.questionnaire import (
@@ -39,11 +40,19 @@ def option_radio(label, options, default, key):
 form_key = f"form_{choice}"   # a new key per example, so loading an example resets the form
 with st.form(form_key):
     st.subheader("Client details")
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns([3, 1, 1, 2])
     name = c1.text_input("Client name", value=base.name if base else "")
     age = c2.number_input("Age", min_value=18, max_value=100, value=base.age if base else 45)
-    amount = c3.number_input("Amount to invest (USD)", min_value=10_000, step=50_000,
+    currency = c3.selectbox("Currency", CURRENCIES, index=CURRENCIES.index(base.currency) if base else 0,
+                            help="Used to display amounts. The analysis runs in USD; HKD is pegged to USD, "
+                                 "so the percentages are the same.")
+    amount = c4.number_input("Amount to invest", min_value=10_000, step=50_000,
                              value=int(base.investment_amount) if base else 1_000_000)
+    styles = list(EQUITY_STYLES)
+    equity_style = st.radio("Equity mix", styles, horizontal=True,
+                            index=styles.index(base.equity_style) if base else 0,
+                            format_func=lambda k: f"{EQUITY_STYLES[k]['label']}: {proxy_description('equities', k)}",
+                            help="The Hong Kong tilt puts 15% of the equity part into Hong Kong shares.")
 
     part_a, part_b = st.columns(2, gap="large")
     with part_a:
@@ -74,9 +83,10 @@ if submitted:
         st.error("Please answer every question before scoring.")
     else:
         client = Client(name=name.strip(), age=int(age), investment_amount=float(amount), answers=answers,
-                        horizon=horizon, max_loss=max_loss, liquidity=liquidity, notes=base.notes if base else "")
+                        horizon=horizon, max_loss=max_loss, liquidity=liquidity, notes=base.notes if base else "",
+                        currency=currency, equity_style=equity_style)
         with st.spinner("Scoring the client, optimising the portfolio and running stress tests..."):
-            st.session_state["proposal"] = build_proposal(client, get_prices())
+            st.session_state["proposal"] = build_proposal(client, get_prices(equity_style))
         st.rerun()   # refresh so the sidebar shows the new client
 
 if proposal is not None:

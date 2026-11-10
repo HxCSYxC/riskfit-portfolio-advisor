@@ -8,7 +8,7 @@ import matplotlib.dates as mdates
 import pandas as pd
 from matplotlib.ticker import MultipleLocator, PercentFormatter
 
-from riskfit.config import ASSET_LABELS
+from riskfit.config import ANNUAL_FEE, ASSET_LABELS, REBALANCE
 from riskfit.risk_profile.profiles import PROFILES
 from riskfit.stress_test import metrics
 from riskfit.stress_test.scenarios import SCENARIOS
@@ -85,7 +85,8 @@ def plot_efficient_frontier(frontier, portfolios, mu, cov, highlight=None):
 
 
 def plot_scenario_paths(asset_returns, portfolios, colours=None, figsize=(12, 4.2),
-                        title="How each portfolio would have fared in past crises"):
+                        title="How each portfolio would have fared in past crises",
+                        rebalance=REBALANCE, annual_fee=ANNUAL_FEE):
     """One panel per crisis: value of 100 invested at the start, for each portfolio.
 
     portfolios: dict of name -> weights. Profile names get their profile colour;
@@ -96,7 +97,8 @@ def plot_scenario_paths(asset_returns, portfolios, colours=None, figsize=(12, 4.
     for ax, scenario in zip(axes, SCENARIOS):
         _style_axes(ax)
         for name, weights in portfolios.items():
-            port = metrics.portfolio_returns(asset_returns, weights).loc[scenario.start:scenario.end]
+            port = metrics.portfolio_returns(asset_returns, weights, rebalance, annual_fee)
+            port = port.loc[scenario.start:scenario.end]
             wealth = metrics.wealth_index(port, start_value=100)
             ax.plot(wealth.index, wealth.values, color=colours.get(name, INK_MUTED), linewidth=2, label=name)
         ax.axhline(100, color=INK_MUTED, linewidth=1, linestyle="--")
@@ -132,7 +134,7 @@ def plot_rolling_correlation(correlation):
             transform=ax.transAxes, fontsize=9, color=INK_SECONDARY)
     ax.set_ylim(-0.8, 1.0)
     ax.set_ylabel("Correlation", color=INK_SECONDARY, fontsize=10)
-    ax.set_title("Rolling 3-year correlation: US equities (SPY) vs investment-grade bonds (AGG)",
+    ax.set_title("Rolling 3-year correlation: global equities vs investment-grade bonds (AGG)",
                  loc="left", fontsize=12, color=INK, fontweight="bold", pad=10)
     fig.tight_layout()
     return fig
