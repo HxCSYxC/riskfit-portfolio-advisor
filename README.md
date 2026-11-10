@@ -5,9 +5,9 @@ investment proposal. It scores the client into one of five risk profiles, separa
 to take risk (attitude) from their **ability** to take risk (horizon and maximum loss). It then builds a
 portfolio of global equities, investment-grade bonds, cash and gold using **constrained mean-variance
 optimisation** with Ledoit-Wolf shrinkage. It **stress-tests** that portfolio against the 2008 Global
-Financial Crisis, the 2020 COVID crash and the 2022 inflation shock. Finally, it produces a **one-page PDF
-proposal** written for a non-expert client. Everything runs in a four-page Streamlit app on free daily ETF
-data from 2007 to 2026.
+Financial Crisis, the 2020 COVID crash and the 2022 inflation shock, after fees, and against hypothetical
+"what if" shocks. Finally, it produces a **one-page PDF proposal** written for a non-expert client, in USD or
+HKD. Everything runs in a four-page Streamlit app on free daily ETF data from 2007 to 2026.
 
 > **For illustration only. Not investment advice.** This is a student portfolio project. All clients are fictional.
 
@@ -30,11 +30,12 @@ Questionnaire ─► Risk profile ─► Optimised portfolio ─► Stress tests
 
 1. **Client Questionnaire.** Five attitude-to-risk questions (goal, experience, reaction to a 20% fall,
    preferred range of outcomes, comfort with swings), plus investment horizon, maximum acceptable loss
-   and liquidity needs.
+   and liquidity needs. Amounts can be shown in USD or HKD, and the equity part can take a Hong Kong tilt.
 2. **Recommended Portfolio.** The optimised allocation, the efficient frontier with the client marked on
    it, and a plain-English explanation of why the mix suits them.
-3. **Stress Tests.** Return, maximum drawdown and recovery time in each crisis, plus volatility,
-   historical VaR and expected shortfall, and the rolling stock–bond correlation.
+3. **Stress Tests.** Return, maximum drawdown and recovery time in each crisis after fees, three
+   hypothetical shocks, volatility, historical VaR and expected shortfall, and the rolling stock–bond
+   correlation.
 4. **Download Proposal.** A one-page PDF with the client's profile, allocation chart, expected return and
    range, worst historical loss in USD, a plain-English explanation and a clear disclaimer.
 
@@ -48,7 +49,7 @@ cd riskfit-portfolio-advisor
 pip install -r requirements.txt
 
 streamlit run app/streamlit_app.py      # the app, at http://localhost:8501
-pytest                                  # 97 tests
+pytest                                  # 112 tests
 ```
 
 The price data is already cached in `riskfit/data/cache/prices.csv`, so the app works offline. Other commands:
@@ -57,6 +58,7 @@ The price data is already cached in `riskfit/data/cache/prices.csv`, so the app 
 python -m riskfit.data.loader --refresh     # download fresh prices from Yahoo Finance
 python -m riskfit.optimiser.frontier        # print profile portfolios, save the frontier chart
 python -m riskfit.stress_test.scenarios     # print stress-test tables, save the charts
+python -m riskfit.optimiser.sensitivity     # how the weights react to the return assumptions
 python scripts/generate_examples.py         # rebuild the three example PDFs
 ```
 
@@ -67,17 +69,33 @@ python scripts/generate_examples.py         # rebuild the three example PDFs
 ### Data and asset proxies
 
 All data is daily, from Yahoo Finance via `yfinance`. Prices are **adjusted** for dividends and coupons,
-so returns are total returns. The base currency is **USD**. HKD is pegged to the USD (7.75–7.85 band),
-so USD results are a fair guide for a Hong Kong client.
+so returns are total returns.
 
-| Asset class | ETF | Data from | Why this proxy |
+| Asset class | ETF proxy | Data from | Why this proxy |
 |---|---|---|---|
-| Global equities | SPY | 1993 | Global ETFs (ACWI, VT) only start in 2008, too late for the GFC. So this sleeve is really *US* large-cap. |
+| Global equities | SPY 60% / EFA 30% / EEM 10% | Apr 2003 | A fixed blend of US, other developed and emerging markets, close to a global index's regional weights. Global ETFs (ACWI, VT) only start in 2008, too late for the GFC. |
 | Investment-grade bonds | AGG | Sep 2003 | Whole US investment-grade market (Treasuries, corporates, MBS). A Treasury-only fund (IEF) would flatter 2008. |
 | Cash | BIL | May 2007 | 1–3 month T-bills. The closest ETF to cash with history before the GFC. |
 | Gold | GLD | Nov 2004 | Physically backed gold. |
 
-The four-asset sample runs from **30 May 2007 to 29 Oct 2026** (4,887 trading days).
+The four-asset sample runs from **30 May 2007 to 10 Nov 2026** (4,895 trading days).
+
+### Hong Kong options
+
+- **HKD display.** A client's amounts can be shown in HKD. The analysis itself runs in USD. HKD is
+  pegged to the USD in a 7.75–7.85 band, so percentage results are the same to within the width of
+  the band (about 1.3%).
+- **Hong Kong tilt.** The equity part can be switched to SPY 50% / EFA 25% / EEM 10% / EWH 15%, for
+  clients who want some home-market exposure. EWH (MSCI Hong Kong) is USD-listed, so it shares a
+  trading calendar with the other ETFs. Results barely change: the Balanced portfolio's worst fall is
+  −32.4% with the tilt against −32.3% without.
+- **Link to Hong Kong suitability rules.** The questionnaire is a simplified illustration of the
+  information the SFC's Code of Conduct expects an adviser to gather and use. Paragraph 5.1 ("know your
+  client") covers the client's financial situation, investment experience and investment objectives.
+  Paragraph 5.2 requires a recommendation to be reasonably suitable for that client. The SFC's suitability
+  guidance lists investment objectives, investment horizon, knowledge and experience, risk tolerance and
+  financial situation as the factors. RiskFit asks about each of these except the full financial
+  situation, which is a stated limitation. It is not a compliance tool.
 
 ### Risk profiling: willingness vs ability
 
@@ -90,7 +108,7 @@ The four-asset sample runs from **30 May 2007 to 29 Oct 2026** (4,887 trading da
 
 The maximum-loss bands (15% / 25% / 35% / 45% / more) were **calibrated against the stress tests**, so
 every profile's worst historical drawdown stays within the loss the client said they could accept. A unit
-test re-checks this on the real data.
+test re-checks this on the real data, for both equity mixes, after fees.
 
 ### Portfolio construction
 
@@ -107,14 +125,15 @@ It is solved with SciPy's SLSQP.
   - equities 7.0% (cash + 4% equity risk premium);
   - gold 3.5% (inflation + 1%).
 
-  From 2007 to 2026, US equities returned about 11% a year and gold about 9%. Feeding those numbers into
-  an optimiser would make it chase past winners.
+  From 2007 to 2026, global equities returned about 8% a year and gold about 9%. Feeding those numbers
+  into an optimiser would make it chase past winners. The proposal shows expected returns **after an
+  assumed 1% yearly fee**.
 - **Covariance** comes from monthly returns with **Ledoit-Wolf shrinkage applied to the correlations**
-  (shrinkage intensity 0.25). Each asset keeps its measured volatility. The standard version would pull
+  (shrinkage intensity 0.23). Each asset keeps its measured volatility. The standard version would pull
   cash's 0.6% volatility up towards the average.
 - **The 5% gold floor is a deliberate policy choice.** With a conservative return assumption, pure
-  mean-variance holds no gold. The floor costs under 0.1% a year of expected return and slightly reduced
-  drawdowns in 2008 and 2022.
+  mean-variance holds no gold. The floor costs under 0.1% a year of expected return and reduced
+  drawdowns by 0.3–0.8 percentage points in 2008 and 2022.
 
 ![Efficient frontier](docs/images/efficient_frontier.png)
 
@@ -122,14 +141,29 @@ It is solved with SciPy's SLSQP.
 
 | Scenario | Window | What happened |
 |---|---|---|
-| Global Financial Crisis | 9 Oct 2007 – 9 Mar 2009 | US equities −55%; bonds +7%, gold +25% |
-| COVID-19 crash | 19 Feb – 23 Mar 2020 | US equities −33% in five weeks |
-| 2022 inflation and rate shock | calendar 2022 | US equities −18% **and** bonds −13% |
+| Global Financial Crisis | 9 Oct 2007 – 9 Mar 2009 | Global equities −56%; bonds +7%, gold +25% |
+| COVID-19 crash | 19 Feb – 23 Mar 2020 | Global equities −33% in five weeks |
+| 2022 inflation and rate shock | calendar 2022 | Global equities −17% **and** bonds −13% |
 
 For each scenario, RiskFit reports:
 - **return over the window**;
 - **maximum drawdown**, the worst peak-to-trough fall;
 - **recovery time**, from the trough until the portfolio is back at its pre-crisis peak, using the data after the crisis.
+
+**Costs.** The tests assume a **1% yearly fee** and **quarterly rebalancing**: weights drift with the
+markets and are reset on the first trading day of each quarter. The app also shows the results with no
+fee and daily rebalancing, for comparison.
+
+**Hypothetical shocks** cover risks the 2007–2026 history does not contain. Each is a one-off move in
+every asset class at once, and the portfolio's loss is its weights times those moves:
+
+| Shock | Equities | Bonds | Cash | Gold |
+|---|---|---|---|---|
+| Interest rates rise 2% | −10% | −12% (about 6 years' duration × 2%) | 0% | −5% |
+| Stagflation | −30% | −10% | 0% | +15% |
+| Severe recession | −40% | +5% | 0% | 0% |
+
+The shock sizes are judgement calls, written down in `riskfit/stress_test/hypothetical.py`.
 
 Full-period measures:
 - annualised volatility;
@@ -140,40 +174,62 @@ Full-period measures:
 
 ## Key results
 
-**The five profile portfolios** (no liquidity needs):
+**The five profile portfolios** (global equity mix, no liquidity needs):
 
-| Profile | Equities | Bonds | Cash | Gold | Exp. return | Exp. volatility |
-|---|---|---|---|---|---|---|
-| Conservative | 18% | 42% | 35% | 5% | 4.2% | 4.0% |
-| Moderately Conservative | 34% | 56% | 5% | 5% | 5.0% | 6.5% |
-| Balanced | 54% | 41% | 0% | 5% | 5.6% | 9.0% |
-| Moderately Aggressive | 72% | 23% | 0% | 5% | 6.1% | 11.5% |
-| Aggressive | 90% | 5% | 0% | 5% | 6.7% | 14.0% |
+| Profile | Equities | Bonds | Cash | Gold | Exp. return before fees | After 1% fee | Exp. volatility |
+|---|---|---|---|---|---|---|---|
+| Conservative | 17% | 41% | 36% | 5% | 4.1% | 3.1% | 4.0% |
+| Moderately Conservative | 32% | 58% | 5% | 5% | 4.9% | 3.9% | 6.5% |
+| Balanced | 52% | 43% | 0% | 5% | 5.5% | 4.5% | 9.0% |
+| Moderately Aggressive | 70% | 25% | 0% | 5% | 6.1% | 5.1% | 11.5% |
+| Aggressive | 88% | 8% | 0% | 5% | 6.6% | 5.6% | 14.0% |
 
-**How they would have done in past crises** (maximum drawdown, recovery time in brackets):
+Weights are rounded, so a row may not add up to exactly 100%.
+
+**How they would have done in past crises** (maximum drawdown after a 1% fee with quarterly rebalancing,
+recovery time in brackets):
 
 | Profile | 2008 GFC | 2020 COVID | 2022 inflation | 95% daily VaR | 95% daily ES |
 |---|---|---|---|---|---|
-| Conservative | −12.4% (10 months) | −8.6% (2 months) | −11.4% (14 months) | −0.39% | −0.64% |
-| Moderately Conservative | −20.2% (12 months) | −14.2% (2 months) | −17.1% (17 months) | −0.67% | −1.10% |
-| Balanced | −30.4% (13 months) | −19.8% (3 months) | −19.5% (14 months) | −1.00% | −1.64% |
-| Moderately Aggressive | −40.9% (21 months) | −25.5% (4 months) | −21.2% (14 months) | −1.31% | −2.17% |
-| Aggressive | −50.0% (26 months) | −30.8% (4 months) | −23.0% (14 months) | −1.64% | −2.70% |
+| Conservative | −13.2% (12 months) | −8.4% (2 months) | −12.3% (19 months) | −0.40% | −0.63% |
+| Moderately Conservative | −21.7% (14 months) | −14.0% (3 months) | −18.5% (21 months) | −0.68% | −1.06% |
+| Balanced | −32.3% (19 months) | −18.8% (3 months) | −21.0% (19 months) | −0.96% | −1.60% |
+| Moderately Aggressive | −42.9% (25 months) | −23.7% (4 months) | −23.0% (16 months) | −1.29% | −2.15% |
+| Aggressive | −51.7% (46 months) | −29.2% (4 months) | −24.9% (16 months) | −1.62% | −2.70% |
 
 ![Stress scenarios](docs/images/stress_scenarios.png)
 
+**Hypothetical shocks** (one-off portfolio return):
+
+| Profile | Rates rise 2% | Stagflation | Severe recession |
+|---|---|---|---|
+| Conservative | −7.0% | −8.6% | −4.9% |
+| Moderately Conservative | −10.4% | −14.7% | −10.0% |
+| Balanced | −10.6% | −19.1% | −18.5% |
+| Moderately Aggressive | −10.3% | −22.7% | −26.7% |
+| Aggressive | −9.9% | −26.3% | −34.6% |
+
 **What stands out:**
 
-- **2008 rewarded diversification; 2022 did not.** In the GFC the gap between Conservative (−12%) and
-  Aggressive (−50%) was huge, because bonds and gold rose while stocks fell. In 2022 the gap shrank to
-  −11% vs −23%, and the Balanced portfolio lost about as much as in the COVID crash (−19.5% vs −19.8%),
+- **2008 rewarded diversification; 2022 did not.** In the GFC the gap between Conservative (−13%) and
+  Aggressive (−52%) was huge, because bonds and gold rose while stocks fell. In 2022 the gap shrank to
+  −12% vs −25%, and the Balanced portfolio lost *more* than in the COVID crash (−21.0% vs −18.8%),
   even though stocks fell far less.
 - **Why: bonds don't always protect a portfolio when inflation is the main risk.** Normally, falling
   stocks mean a weaker economy, rate cuts and *rising* bond prices. In 2022, inflation forced rapid rate
-  *rises*, which hit bonds and stocks at the same time. The rolling 3-year stock–bond correlation went from
-  mostly between −0.45 and 0 in the 2010s to about **+0.7** after 2022.
-- **Recovery matters as much as the fall.** After 2008 the Aggressive portfolio needed over two years to
-  regain its peak. After COVID it needed four months.
+  *rises*, which hit bonds and stocks at the same time. The rolling 3-year stock–bond correlation stayed
+  between about −0.4 and +0.2 from 2012 to 2021, then rose to about **+0.8** after 2022.
+- **A rate shock hits every profile about equally.** In the "rates rise 2%" shock, four of the five
+  profiles lose about 10%, because bonds fall more than shares. Holding more bonds does not make a
+  portfolio safer against that risk; only cash does.
+- **Fees and realistic rebalancing make recoveries much slower.** With no fee and daily rebalancing, the
+  Aggressive portfolio recovered from 2008 in 26 months. With a 1% fee and quarterly rebalancing it took
+  46 months. The falls themselves are at most about 1.5 percentage points deeper.
+- **The mix is robust to the equity return assumption.** Changing the equity risk premium from 3% to 5%
+  leaves the Balanced, Moderately Aggressive and Aggressive weights unchanged, because the volatility
+  target decides the mix. The split between bonds and cash in the two cautious profiles is the
+  sensitive part: with a bond premium of 0.5% instead of 1%, Moderately Conservative moves from 58% bonds
+  and 5% cash to 25% bonds and 32% cash.
 - **The stress tests changed the questionnaire.** The first version allowed a client who accepts "up to 5%
   loss" into a portfolio that fell 12% in 2008. The loss bands were recalibrated so that no proposal
   promises a loss limit its portfolio has already broken.
@@ -184,21 +240,23 @@ Full-period measures:
 
 ## Limitations
 
-- **History is a limited guide.** About 19 years of ETF data cover only three major crises. The next one
-  may look different (e.g. 1970s-style inflation or a long bear market), and tested weights were chosen
-  *after* these events.
-- **ETF proxies.** "Global equities" is really US large-cap (SPY), which adds home bias, sector
-  concentration and no currency diversification. AGG and BIL are US instruments.
-- **No fees, taxes or trading costs**, and **daily rebalancing** in the tests. Real portfolios rebalance
-  less often and pay management fees and spreads, so real outcomes would be somewhat worse.
-- **USD base only.** This is fine for HKD clients under the peg, but not for clients spending in other currencies.
-- **Assumption-driven.** Expected returns are judgement-based capital market assumptions. Different (but
-  reasonable) numbers would change the weights. Volatility is estimated from monthly data, which
-  understates daily volatility (e.g. 14% target vs 17.7% realised for Aggressive). The app shows both.
+- **History is a limited guide.** About 19 years of ETF data cover only three major crises. The
+  hypothetical shocks help, but their sizes are judgement calls, and the tested weights were chosen
+  *after* the historical events.
+- **ETF proxies.** The equity blend uses fixed regional weights, while a real global index changes its
+  weights over time. AGG and BIL are US instruments, so bonds and cash carry no Asian exposure.
+- **Simple costs.** One flat 1% fee stands in for advisory fees, fund costs and trading spreads. Taxes
+  are ignored.
+- **Currency.** The analysis is in USD. HKD amounts rely on the peg holding, and clients spending in
+  other currencies would need a different analysis.
+- **Assumption-driven.** Expected returns are judgement-based capital market assumptions. The
+  sensitivity table shows the bond and cash split depends on them. Volatility is estimated from monthly
+  data, which understates daily volatility (e.g. 14% target vs 17.7% realised for Aggressive). The app
+  shows both.
 - **Simplified suitability.** A real assessment covers the client's whole financial situation, existing
   holdings, concentration, knowledge of products and regulatory requirements. Here it is eight questions
   and one pot of money.
-- **Four asset classes only.** No regional equities, high yield, private markets or alternatives.
+- **Four asset classes only.** No high yield, private markets or alternatives.
 
 ---
 
@@ -206,30 +264,33 @@ Full-period measures:
 
 ```
 riskfit/
-  config.py                    # asset classes, ETF tickers, paths
-  data/loader.py               # download, clean, cache prices; returns
+  config.py                    # asset classes, ETF blends, costs, paths
+  data/loader.py               # download, clean, cache prices; blended equity index; returns
   risk_profile/questionnaire.py  # questions, scoring, willingness vs ability
   risk_profile/profiles.py     # 5 profiles: volatility target, loss limit, weight limits
   optimiser/assumptions.py     # building-block expected returns
   optimiser/mean_variance.py   # Ledoit-Wolf covariance, constrained optimisation
   optimiser/frontier.py        # efficient frontier
-  stress_test/metrics.py       # drawdown, recovery, VaR, ES, rolling correlation
+  optimiser/sensitivity.py     # weights under different return assumptions
+  stress_test/metrics.py       # rebalancing and fees, drawdown, recovery, VaR, ES, correlation
   stress_test/scenarios.py     # 2008 / 2020 / 2022 scenarios
+  stress_test/hypothetical.py  # "what if" shocks
   proposal.py                  # questionnaire -> portfolio -> stress tests -> explanation
   report/charts.py             # matplotlib charts used by the app, PDF and README
   report/pdf.py                # one-page reportlab proposal
 app/                           # Streamlit app (4 pages)
 examples/                      # 3 fictional clients (.json) and their PDFs
 scripts/generate_examples.py
-tests/                         # 97 pytest tests
+tests/                         # 112 pytest tests
 LEARNING.md                    # plain-English explanation of every part, with interview Q&A
 ```
 
 **Tests** cover:
 - the scoring rules (band edges, capacity caps, liquidity);
 - the optimiser constraints (weights sum to 1, limits respected, volatility target met, cash floor);
-- the stress-test maths (drawdown, recovery and VaR/ES on hand-checked examples);
-- a calibration check on real data;
+- the stress-test maths (drawdown, recovery, VaR/ES, weight drift, fees and shocks on hand-checked examples);
+- the equity blend and the sensitivity cases;
+- a calibration check on real data, for both equity mixes;
 - the PDF (exactly one page, key content present);
 - a smoke test of every app page.
 

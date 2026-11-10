@@ -10,6 +10,10 @@ questions an interviewer might ask about it. One section is added per phase.
 4. [The one-page PDF proposal](#phase-4-the-one-page-pdf-proposal)
 5. [The Streamlit app](#phase-5-the-streamlit-app)
 6. [Testing, the README, and presenting the project](#phase-6-testing-the-readme-and-presenting-the-project)
+7. [Improvements: global equities, Hong Kong options, costs, what-if shocks, sensitivity](#phase-7-improvements)
+
+All numbers in this file are for the current version (data to 10 Nov 2026, global equity mix,
+1% yearly fee and quarterly rebalancing in the historical tests).
 
 ---
 
@@ -21,7 +25,7 @@ questions an interviewer might ask about it. One section is added per phase.
 
 | Asset class | ETF | Why this one |
 |---|---|---|
-| Equities | SPY (S&P 500) | Very liquid, history back to 1993. Global ETFs (ACWI, VT) only start in 2008, too late to test the 2008 crisis. So the equity sleeve is really *US* large-cap, and we say so. |
+| Equities | SPY 60% / EFA 30% / EEM 10% | A fixed blend of US shares (SPY), other developed markets (EFA) and emerging markets (EEM), close to a global index's regional weights. Global ETFs (ACWI, VT) only start in 2008, too late to test the 2008 crisis; these three all have history from 2003. The first version used SPY alone, which was really *US* shares. |
 | Investment-grade bonds | AGG | Covers the whole US investment-grade market: Treasuries, corporate bonds and mortgage bonds. The usual alternative, IEF, holds only 7–10 year Treasuries. Treasuries *rose* in 2008 while corporate bonds fell, so IEF would make bonds look safer than an investment-grade mix really is. |
 | Cash | BIL (1–3 month T-bills) | The closest thing to cash in an ETF. It launched in May 2007, just before the 2008 crisis window starts. SHY (1–3 year bonds) has more history but carries some interest-rate risk, so it is not really cash. |
 | Gold | GLD | The largest physically backed gold ETF, launched in 2004. |
@@ -112,11 +116,12 @@ PDF proposal later.
 > not just Treasuries. IEF is 7–10 year Treasuries only. Treasuries rallied in
 > 2008 because investors fled to safety, while corporate bonds fell, so IEF would
 > overstate how well bonds protected a portfolio. AGG is the broad
-> investment-grade market, so it matches the label. The main limitation is
-> equities: SPY is US-only, because global ETFs don't have data back to 2007.
-> A real global equity allocation would differ, especially in currency exposure.
-> Also, ETF data only goes back about 20 years, so it covers a small number of
-> crises.
+> investment-grade market, so it matches the label. For equities, global ETFs
+> don't have data back to 2007, so I blend three regional ETFs at fixed
+> weights (60% US, 30% other developed, 10% emerging). A real global index
+> changes its weights over time, so the blend is an approximation. Bonds and
+> cash are US instruments. Also, ETF data only goes back about 20 years, so it
+> covers a small number of crises.
 
 **Q3. Why use adjusted prices, and why cache the data?**
 > Adjusted prices add back dividends and coupons, so their returns are total
@@ -145,12 +150,12 @@ class using simple "building blocks":
 
 **`riskfit/optimiser/mean_variance.py`** builds the portfolios:
 
-1. **Covariance matrix.** It uses month-end returns from June 2007 to October
-   2026 (about 230 months) for all four ETFs and applies **Ledoit-Wolf
+1. **Covariance matrix.** It uses month-end returns from June 2007 to November
+   2026 (about 230 months) for all four asset classes and applies **Ledoit-Wolf
    shrinkage to the correlations**. Each asset keeps its own measured
-   volatility (equities 15.5%, bonds 4.7%, cash 0.6%, gold 17.6% a year). The
-   correlations are pulled 25% of the way towards zero. For example, the
-   stock–bond correlation goes from 0.25 to 0.19.
+   volatility (equities 15.7%, bonds 4.7%, cash 0.6%, gold 17.6% a year). The
+   correlations are pulled 23% of the way towards zero. For example, the
+   stock–bond correlation goes from 0.29 to 0.23.
 2. **Optimisation.** For each profile, SciPy's `SLSQP` solver finds the weights that
    - **maximise expected return**,
    - with **volatility ≤ the profile's target**,
@@ -171,11 +176,11 @@ single assets and the five profile portfolios.
 
 | Profile | Equities | Bonds | Cash | Gold | Exp. return | Volatility |
 |---|---|---|---|---|---|---|
-| Conservative | 18.4% | 41.7% | 34.9% | 5.0% | 4.18% | 4.0% |
-| Moderately Conservative | 34.1% | 55.9% | 5.0% | 5.0% | 4.95% | 6.5% |
-| Balanced | 53.6% | 41.4% | 0.0% | 5.0% | 5.58% | 9.0% |
-| Moderately Aggressive | 72.1% | 22.9% | 0.0% | 5.0% | 6.14% | 11.5% |
-| Aggressive | 89.7% | 5.3% | 0.0% | 5.0% | 6.67% | 14.0% |
+| Conservative | 17.4% | 41.4% | 36.2% | 5.0% | 4.14% | 4.0% |
+| Moderately Conservative | 32.2% | 57.8% | 5.0% | 5.0% | 4.89% | 6.5% |
+| Balanced | 51.6% | 43.4% | 0.0% | 5.0% | 5.52% | 9.0% |
+| Moderately Aggressive | 70.0% | 25.0% | 0.0% | 5.0% | 6.07% | 11.5% |
+| Aggressive | 87.5% | 7.5% | 0.0% | 5.0% | 6.60% | 14.0% |
 
 Each profile's weight limits cost less than 0.1% a year compared with the
 unconstrained frontier.
@@ -183,10 +188,10 @@ unconstrained frontier.
 ### Why these choices
 
 - **Forward-looking returns, not historical averages.** Mean-variance
-  optimisation is very sensitive to expected returns. Historically, US
-  equities returned about 11% a year from 2007 to 2026, and gold about 9%. Both
-  were strong periods that may not repeat. An optimiser fed those numbers
-  would put almost everything into US stocks. Building-block assumptions are
+  optimisation is very sensitive to expected returns. Historically, global
+  equities returned about 8% a year from 2007 to 2026, and gold about 9%. Both
+  were good periods that may not repeat. An optimiser fed those numbers
+  would put almost everything into shares and gold. Building-block assumptions are
   conservative, easy to explain to a client, and close to the long-term
   capital market assumptions that banks and asset managers publish.
 - **Ledoit-Wolf on correlations only.** The sample covariance matrix contains
@@ -235,7 +240,7 @@ unconstrained frontier.
 > that error as real and over-weights assets that *look* like good
 > diversifiers by chance. Ledoit-Wolf blends the sample estimate with a
 > simple, stable target, and it calculates the best blend from the data. Here
-> it pulled correlations 25% of the way towards zero. I applied it to
+> it pulled correlations 23% of the way towards zero. I applied it to
 > standardised returns because the standard version also pulls all the
 > variances towards the average. With cash at 0.6% volatility and gold at
 > 18%, that made cash look about four times riskier than it is. Volatilities
@@ -264,9 +269,9 @@ replays each profile's *current* weights through them:
 
 | Scenario | Window | What happened |
 |---|---|---|
-| Global Financial Crisis | 9 Oct 2007 – 9 Mar 2009 | US equities −55%; bonds +7%, gold +25% |
-| COVID-19 crash | 19 Feb – 23 Mar 2020 | US equities −33% in five weeks; almost everything fell for a few days |
-| 2022 inflation and rate shock | calendar year 2022 | US equities −18% **and** bonds −13%, together |
+| Global Financial Crisis | 9 Oct 2007 – 9 Mar 2009 | Global equities −56%; bonds +7%, gold +25% |
+| COVID-19 crash | 19 Feb – 23 Mar 2020 | Global equities −33% in five weeks; almost everything fell for a few days |
+| 2022 inflation and rate shock | calendar year 2022 | Global equities −17% **and** bonds −13%, together |
 
 For each scenario it reports:
 - **Return over the crisis**: from the first day to the last day of the window.
@@ -277,7 +282,9 @@ For each scenario it reports:
   is back at its pre-crisis peak, using all the data *after* the crisis.
   "Not yet recovered" if that never happens.
 
-The portfolio is rebalanced to its target weights every day, with no fees or taxes.
+The portfolio is rebalanced to its target weights every quarter and pays a 1%
+yearly fee. Taxes are ignored. (The first version used daily rebalancing and no
+fees; Phase 7 explains the change.)
 
 **`riskfit/stress_test/metrics.py`** holds the maths: portfolio returns,
 total return, drawdown, recovery, annualised volatility, historical VaR,
@@ -287,39 +294,39 @@ expected shortfall and rolling correlation.
 
 | Profile | 2008 GFC | 2020 COVID | 2022 inflation |
 |---|---|---|---|
-| Conservative | −12.4% (10 months) | −8.6% (2 months) | −11.4% (14 months) |
-| Moderately Conservative | −20.2% (12 months) | −14.2% (2 months) | −17.1% (17 months) |
-| Balanced | −30.4% (13 months) | −19.8% (3 months) | −19.5% (14 months) |
-| Moderately Aggressive | −40.9% (21 months) | −25.5% (4 months) | −21.2% (14 months) |
-| Aggressive | −50.0% (26 months) | −30.8% (4 months) | −23.0% (14 months) |
+| Conservative | −13.2% (12 months) | −8.4% (2 months) | −12.3% (19 months) |
+| Moderately Conservative | −21.7% (14 months) | −14.0% (3 months) | −18.5% (21 months) |
+| Balanced | −32.3% (19 months) | −18.8% (3 months) | −21.0% (19 months) |
+| Moderately Aggressive | −42.9% (25 months) | −23.7% (4 months) | −23.0% (16 months) |
+| Aggressive | −51.7% (46 months) | −29.2% (4 months) | −24.9% (16 months) |
 
-**Full-period risk** (daily data, June 2007 – Oct 2026):
+**Full-period risk** (daily data, June 2007 – Nov 2026, after the 1% fee):
 
 | Profile | Annual return | Annual volatility | 95% daily VaR | 95% daily ES |
 |---|---|---|---|---|
-| Conservative | 4.5% | 4.5% | −0.39% | −0.64% |
-| Moderately Conservative | 6.3% | 7.5% | −0.67% | −1.10% |
-| Balanced | 8.0% | 10.9% | −1.00% | −1.64% |
-| Moderately Aggressive | 9.3% | 14.3% | −1.31% | −2.17% |
-| Aggressive | 10.5% | 17.7% | −1.64% | −2.70% |
+| Conservative | 2.8% | 4.3% | −0.40% | −0.63% |
+| Moderately Conservative | 4.2% | 7.3% | −0.68% | −1.06% |
+| Balanced | 5.3% | 10.6% | −0.96% | −1.60% |
+| Moderately Aggressive | 6.2% | 14.1% | −1.29% | −2.15% |
+| Aggressive | 7.0% | 17.7% | −1.62% | −2.70% |
 
 **Two charts** (in `docs/images/`):
 - `stress_scenarios.png`: the value of 100 invested, through each crisis, for all five profiles.
-- `stock_bond_correlation.png`: the rolling 3-year (36-month) correlation between SPY and AGG.
+- `stock_bond_correlation.png`: the rolling 3-year (36-month) correlation between global equities and AGG.
 
 ### What the stress tests changed
 
 1. **Loss limits recalibrated.** In Phase 1, a client who answered "I can
    accept up to 5% loss" was put in the Conservative profile. But the
-   Conservative portfolio actually fell **12.4%** in 2008. A proposal must not
+   Conservative portfolio actually fell about **13%** in 2008. A proposal must not
    promise a loss limit that the portfolio has already broken. So each
    profile now has a `loss_limit` (15 / 25 / 35 / 45 / 60%) set just above its
    worst historical drawdown. The questionnaire's loss bands match these
    limits. A test (`test_profiles_stay_within_their_loss_limits`) re-checks
    this on the real data every time the tests run.
 2. **The gold floor helped, a little.** Compared with the same profiles with
-   no gold minimum, 5% gold reduced the maximum drawdown by about 0.3–0.7
-   percentage points in 2008 and 2022, and made no difference in COVID. It is
+   no gold minimum, 5% gold reduced the maximum drawdown by about 0.3–0.8
+   percentage points in 2008 and 2022, and by about 0.2 in COVID. It is
    modest but in the right direction, for a cost of under 0.1% a year of
    expected return.
 
@@ -333,17 +340,17 @@ when stocks fall, and the stock–bond correlation is negative. That is why a
 In 2022 the problem was **inflation**. To fight it, the Federal Reserve raised
 rates very fast. Higher rates push bond prices *down*, and they also hurt
 company valuations, so **both fell at the same time**. The correlation chart
-shows this clearly. From 2012 to 2021 the 3-year correlation was mostly
-between −0.45 and 0, so bonds diversified stocks. After 2022 it jumped to
-about **+0.7**. In plain English: when inflation is the main risk, bonds and
+shows this clearly. From 2012 to 2021 the 3-year correlation stayed between
+about −0.4 and +0.2, so bonds diversified stocks. After 2022 it jumped to
+about **+0.8**. In plain English: when inflation is the main risk, bonds and
 stocks are hit by the same thing, so holding bonds does not cushion the fall.
-This is why the Balanced portfolio lost almost as much in 2022 (−19.5%) as in
-the COVID crash (−19.8%), and why the gaps between profiles were much smaller
+This is why the Balanced portfolio lost more in 2022 (−21.0%) than in
+the COVID crash (−18.8%), and why the gaps between profiles were much smaller
 in 2022 than in 2008.
 
 One more honest detail. AGG includes corporate and mortgage bonds, which carry
 credit risk. So even in 2008 its correlation with stocks briefly turned
-*positive* (about +0.3). A Treasury-only fund would have looked more
+*positive* (up to about +0.4). A Treasury-only fund would have looked more
 defensive. That is the trade-off of choosing a proxy that matches "investment
 grade" rather than one that flatters the results.
 
@@ -373,14 +380,14 @@ grade" rather than one that flatters the results.
 
 ### Interview questions
 
-**Q1. Why did the Balanced portfolio lose about as much in 2022 as in the COVID crash, even though stocks fell much less?**
+**Q1. Why did the Balanced portfolio lose more in 2022 than in the COVID crash, even though stocks fell much less?**
 > Because bonds didn't help in 2022. In COVID, bonds were roughly flat and
 > cushioned part of the stock fall. In 2022 the shock was inflation, and the
 > Fed raised rates quickly, so bond prices fell (AGG −13%) at the same time as
-> stocks (−18%). A Balanced portfolio relies on bonds to offset equity losses.
+> stocks (−17%). A Balanced portfolio relies on bonds to offset equity losses.
 > When both are hit by the same driver, rising rates, the diversification
 > disappears. You can see it in the rolling 3-year stock–bond correlation: it
-> went from negative for most of the 2010s to about +0.7 after 2022. For a
+> went from around zero or below in the 2010s to about +0.8 after 2022. For a
 > client, the lesson is that "60/40" is not automatically safe when inflation
 > is the main risk. Assets like cash, short-term T-bills and gold matter more
 > in that environment.
@@ -392,18 +399,18 @@ grade" rather than one that flatters the results.
 > average loss on those worst 5% of days: about 1.6% for Balanced. It looks
 > inside the tail, so it is the better risk measure, and regulators moved from
 > VaR to ES for that reason. For a private client, though, I'd lead with the
-> stress-test drawdown ("in 2008 this portfolio fell about 30% and took about
-> a year to recover"), because it is concrete and easy to picture.
+> stress-test drawdown ("in 2008 this portfolio fell about 32% and took about
+> a year and a half to recover"), because it is concrete and easy to picture.
 
 **Q3. What are the limitations of historical stress testing?**
 > It only shows crises that have already happened, and the next one will be
 > different. The ETF data starts in 2007, so we can't test the 1970s
-> inflation or the 2000 tech crash. I assume daily rebalancing with no costs,
-> and real clients rebalance less often and pay fees. The tests use today's
-> weights, which were chosen *after* those events, so there is some hindsight.
-> And the proxies matter: AGG and SPY are US funds. In practice I would add
-> hypothetical scenarios, such as "rates +200bp" or "equities −30% with bonds
-> −10%", to cover risks the history doesn't contain. I also used the stress
+> inflation or the 2000 tech crash. The tests use today's weights, which were
+> chosen *after* those events, so there is some hindsight. The costs are
+> simplified to one flat 1% fee with quarterly rebalancing. And the proxies
+> matter: the bond and cash funds are US funds. To cover risks the history
+> doesn't contain, I added three hypothetical shocks: rates up 2%,
+> stagflation and a severe recession. I also used the stress
 > results to check my own questionnaire: they showed my original loss bands
 > were too optimistic, so I recalibrated them.
 
@@ -448,17 +455,17 @@ client answers ──► score_client()            → risk profile + cash floor
 
 | Client | Situation | Profile | Why |
 |---|---|---|---|
-| Mr Chan Tai Man, 62 | About to retire, may draw on savings | Conservative | Attitude suggests Moderately Conservative, but he can only accept a 15% loss |
-| Ms Lee Ka Yan, 41 | Saving for retirement in ~20 years | Balanced | Attitude suggests Moderately Aggressive, but her loss limit is 35% |
-| Mr Wong Siu Ming, 34 | Entrepreneur, may buy a flat next year | Aggressive, with 20% cash | High risk appetite and long horizon, but needs liquidity |
+| Mr Chan Tai Man, 62, HKD 6 million | About to retire, may draw on savings | Conservative | Attitude suggests Moderately Conservative, but he can only accept a 15% loss |
+| Ms Lee Ka Yan, 41, HKD 12 million | Saving for retirement in ~20 years, wants a Hong Kong tilt | Balanced | Attitude suggests Moderately Aggressive, but her loss limit is 35% |
+| Mr Wong Siu Ming, 34, USD 2 million | Entrepreneur, may buy a flat next year | Aggressive, with 20% cash | High risk appetite and long horizon, but needs liquidity |
 
 ### Why these choices
 
 - **One `build_proposal()` for both the PDF and the app**, so the numbers a
   client sees on screen and on paper can never disagree.
 - **Plain English and money amounts.** "Your portfolio could have fallen by
-  about USD 471,000" means more to a client than "maximum drawdown −31.4%".
-  Showing USD amounts makes the risk real *before* it happens. That is the
+  about HKD 3.9 million" means more to a client than "maximum drawdown −32.4%".
+  Showing money amounts, in the client's own currency, makes the risk real *before* it happens. That is the
   point of a suitability conversation.
 - **Rounded numbers** (to the nearest USD 1,000 and whole percentages).
   Precise-looking figures like "USD 824,684" suggest false accuracy for
@@ -466,7 +473,7 @@ client answers ──► score_client()            → risk profile + cash floor
 - **A comparison line (100% shares)** in the crisis chart gives the client a
   reference point, so they can see what diversification did for them.
 - **The disclaimer is prominent** and lists the main simplifications: proxies,
-  no fees or taxes, USD base, and past performance. In a regulated industry,
+  no taxes, analysis in USD, and past performance. In a regulated industry,
   what you *don't* promise matters as much as what you show.
 - **A test checks every example PDF is exactly one page** and contains the key
   sections. Layout changes can quietly push content onto page 2.
@@ -479,10 +486,10 @@ client answers ──► score_client()            → risk profile + cash floor
 > losing more than about a third, so we've matched you to a Balanced
 > portfolio." Then the mix, with each part's job: shares for growth, bonds for
 > income and cushioning, a little gold for crises. Then expectations, as a
-> range rather than one number: "about 5–6% a year on average, and most years
-> between −6% and +17%". Finally the worst case in dollars: "in 2008 this mix
-> would have fallen about 30%, or around USD 470,000 on your
-> USD 1.5 million, and took about a year to recover." If they react badly to
+> range rather than one number: "about 4.5% a year after fees on average, and
+> most years between −6% and +15%". Finally the worst case in money: "in 2008
+> this mix would have fallen about 32%, or around HKD 3.9 million on your
+> HKD 12 million, and took about a year and a half to recover." If they react badly to
 > that number, it's a sign the profile may be too aggressive, and that is the
 > purpose of showing it.
 
@@ -617,7 +624,7 @@ app in a headless browser (Playwright) and checked the screenshots.
   (the 2008 vs 2022 story), and an honest list of limitations.
 - **Screenshots** in `docs/screenshots/`, captured automatically from the
   running app with Playwright, a browser-automation tool.
-- **Final test pass: 97 tests**, all passing (`pytest`).
+- **Final test pass: 97 tests** at the time, all passing (`pytest`). Phase 7 brought this to 112.
 
 ### How the project is tested
 
@@ -644,12 +651,13 @@ missing.
 > two. It then builds a four-asset portfolio with constrained mean-variance
 > optimisation. I used forward-looking return assumptions and Ledoit-Wolf
 > shrinkage, so it doesn't just chase past returns. Next it stress-tests the
-> portfolio on 2008, COVID and 2022. The most interesting finding was 2022:
-> because inflation pushed bonds and stocks down together, a Balanced
-> portfolio lost about as much as in the COVID crash. The stress tests also
-> showed that my first questionnaire was too optimistic about losses, so I
-> recalibrated it. The output is a plain-English PDF for the client, with a
-> Streamlit app around it and 97 tests."
+> portfolio on 2008, COVID and 2022, after fees, and on three hypothetical
+> shocks. The most interesting finding was 2022: because inflation pushed
+> bonds and stocks down together, a Balanced portfolio lost more than in the
+> COVID crash. The stress tests also showed that my first questionnaire was
+> too optimistic about losses, so I recalibrated it. The output is a
+> plain-English PDF for the client, in USD or HKD, with a Streamlit app
+> around it and 112 tests."
 
 ### Interview questions
 
@@ -659,20 +667,20 @@ missing.
 > correlations only. Second, the optimiser held no gold at all. I added a
 > small strategic floor, measured its cost, and checked in the stress tests
 > that it helped a little. Third, and most important, the stress tests showed
-> my Conservative portfolio fell 12% in 2008, while the questionnaire placed
+> my Conservative portfolio fell about 13% in 2008, while the questionnaire placed
 > clients who said "up to 5% loss" into it. I recalibrated the loss bands and
 > added a test that re-checks this against real data. In a suitability
 > context, a promise the portfolio can't keep is the worst kind of bug.
 
 **Q2. What would you do with more time?**
-> Add forward-looking scenarios, such as "rates +200bp" or "stagflation", to
-> cover risks the last 20 years don't contain. Use a wider asset universe:
-> regional equities, Asian bonds, and a proper global equity index once I
-> accept a shorter history. Include fees, and test realistic rebalancing,
-> such as quarterly or when weights drift by 5%. Test how sensitive the
-> weights are to the return assumptions, e.g. with resampling or
-> Black-Litterman. On the product side, add multi-currency support and a
-> proper audit trail.
+> I already did a second round: global equities instead of US-only, fees and
+> quarterly rebalancing, hypothetical shocks, HKD display and a sensitivity
+> table (see Phase 7). Next I would widen the asset universe with Asian
+> bonds and separate regional equity choices. I would make the costs more
+> realistic, with different fees per asset class and rebalancing when weights
+> drift by 5%. I would handle uncertainty in the return assumptions more
+> formally, e.g. with resampling or Black-Litterman. On the product side, I
+> would add true multi-currency support and a proper audit trail.
 
 **Q3. How does this project relate to a role in private wealth management?**
 > It mirrors the RM workflow: understand the client, match them to a
@@ -683,3 +691,155 @@ missing.
 > time, not just percentages. And clients should be told that diversification
 > can fail, as it did in 2022. I'd see this as a way to show I can combine
 > the analytics with clear client communication.
+
+
+---
+
+## Phase 7: Improvements
+
+After the first version was finished, six weaknesses from its own Limitations
+list were fixed. Every number in this file was updated to the new version.
+
+### What changed
+
+**1. Global equities instead of US-only** (`riskfit/config.py`, `riskfit/data/loader.py`)
+
+The equity part is now a blend: **60% SPY (US), 30% EFA (other developed
+markets), 10% EEM (emerging markets)**. `blend_index()` combines the three
+ETFs' daily returns at those fixed weights into one "global equities" index.
+The weights are close to a global index's regional split. All three ETFs
+start by 2003, so the 2008 test still works.
+
+What it changed: global equities returned about 8% a year over 2007–2026
+(US alone: about 11%), fell 56% in 2008, and are slightly more volatile. So
+each profile holds slightly less in equities than before, e.g. Balanced 52%
+instead of 54%.
+
+**2. Hong Kong options**
+
+- **HKD display.** A client has a `currency` (USD or HKD). Amounts are
+  entered and shown in that currency. Nothing is converted, because every
+  result is a percentage, and under the peg (7.75–7.85 per USD) an HKD
+  investor's percentage return is the same to within about 1.3%.
+- **Hong Kong tilt.** A second equity mix puts 15% of the equity part into
+  EWH (MSCI Hong Kong): SPY 50% / EFA 25% / EEM 10% / EWH 15%. The app
+  re-estimates risk and re-runs every test with that mix. It barely changes
+  the results (Balanced worst fall −32.4% vs −32.3%), because Hong Kong
+  shares fell about as much as global shares in each crisis.
+- **SFC suitability.** The README links the questionnaire to the SFC Code of
+  Conduct: paragraph 5.1 ("know your client": financial situation, investment
+  experience, investment objectives) and paragraph 5.2 (a recommendation must
+  be reasonably suitable for the client). The questionnaire covers
+  objectives, experience, risk tolerance, horizon and liquidity. It does not
+  cover the client's full financial situation, and it is not a compliance tool.
+
+**3. Hypothetical "what if" shocks** (`riskfit/stress_test/hypothetical.py`)
+
+| Shock | Equities | Bonds | Cash | Gold |
+|---|---|---|---|---|
+| Interest rates rise 2% | −10% | −12% | 0% | −5% |
+| Stagflation | −30% | −10% | 0% | +15% |
+| Severe recession | −40% | +5% | 0% | 0% |
+
+The portfolio's loss is its weights times the shocks. For Balanced
+(52/43/0/5): rates −10.6%, stagflation −19.1%, recession −18.5%.
+
+The −12% for bonds comes from **duration**: a bond fund's price falls by
+roughly its duration times the rise in rates. AGG's duration is about 6
+years, so 6 × 2% = 12%. The other numbers are judgement calls.
+
+**4. Fees and quarterly rebalancing** (`riskfit/stress_test/metrics.py`)
+
+`portfolio_returns()` now takes two settings:
+- `rebalance="quarterly"`: weights **drift** with the markets and are reset
+  to target on the first trading day of each quarter. Before, they were reset
+  every day, which no real portfolio does.
+- `annual_fee=0.01`: a 1% yearly fee, taken off in equal daily slices.
+
+The proposal now shows the expected return **after** the fee (e.g. Balanced
+5.5% before, 4.5% after).
+
+What it changed, for the same portfolios:
+
+| Profile | 2008 fall: no fee, daily | 2008 fall: 1% fee, quarterly | Recovery before | Recovery after |
+|---|---|---|---|---|
+| Conservative | −12.9% | −13.2% | 10 months | 12 months |
+| Balanced | −30.7% | −32.3% | 13 months | 19 months |
+| Aggressive | −50.8% | −51.7% | 26 months | 46 months |
+
+**5. Sensitivity to the return assumptions** (`riskfit/optimiser/sensitivity.py`)
+
+The optimiser is re-run with one building block changed at a time. Equity
+weight of each profile:
+
+| Case | Conservative | Mod. Conservative | Balanced | Mod. Aggressive | Aggressive |
+|---|---|---|---|---|---|
+| Base case | 17% | 32% | 52% | 70% | 88% |
+| Equity premium 3% | 14% | 32% | 52% | 70% | 88% |
+| Equity premium 5% | 20% | 33% | 52% | 70% | 88% |
+| Bond premium 0.5% | 20% | 38% | 53% | 70% | 88% |
+
+The mix hardly moves when the equity premium changes. The **volatility
+target** decides how much equity a profile can hold, so the return assumption
+only changes the expected return figure. The sensitive part is **bonds vs
+cash** in the cautious profiles: with a bond premium of 0.5%, Moderately
+Conservative moves from 58% bonds / 5% cash to 25% bonds / 32% cash, because
+bonds no longer pay enough for their risk.
+
+**6. Tests**: 112, up from 97. New ones cover the blend index, weight drift
+and the quarterly reset, the fee, the shocks, the sensitivity cases, HKD
+amounts, and the loss-limit calibration for both equity mixes.
+
+### Why these choices
+
+- **A fixed blend instead of a fifth and sixth asset class.** Letting the
+  optimiser choose between US, developed and emerging shares would need
+  separate return assumptions for each, which I can't justify. A fixed blend
+  keeps four asset classes and one equity assumption.
+- **EWH instead of the Tracker Fund (2800.HK).** EWH is listed in the US in
+  USD, so it has the same trading days as the other ETFs. Mixing a Hong
+  Kong-listed fund would mean aligning two holiday calendars and a currency.
+- **No currency conversion.** Converting at a fixed 7.8 would add a step
+  without changing any percentage. Showing the amounts in HKD is enough, and
+  the limitation (the peg must hold) is stated.
+- **Costs on by default.** Showing results before fees flatters them. The app
+  still shows the no-fee, daily-rebalancing version in a comparison table, so
+  the effect of the assumption is visible.
+- **One-off shocks instead of simulated paths.** A weighted sum is easy to
+  explain to a client and to check by hand. The cost is that it says nothing
+  about how long the loss lasts.
+
+### Interview questions
+
+**Q1. Your quarterly-rebalanced, after-fee Aggressive portfolio took 46 months to recover from 2008, against 26 months before. Why such a big difference?**
+> Two effects. The 1% fee compounds: over four years it takes about 4% off,
+> and near the old peak the portfolio was climbing slowly, so a small
+> shortfall adds many months. The second is rebalancing. With daily
+> rebalancing the portfolio keeps buying shares all the way down and so owns
+> more of them at the bottom, which speeds up the recovery. Quarterly
+> rebalancing does that only four times a year. The fall itself is only about
+> 1 percentage point deeper. So the lesson is that costs and rebalancing rules
+> matter far more for *how long* a client is under water than for *how deep*,
+> and a result quoted before fees can be much too optimistic about recovery.
+
+**Q2. In your "rates rise 2%" shock, the Conservative portfolio loses 7% and the Aggressive one 10%. Why are they so close?**
+> Because in that scenario bonds are the problem. I assume bonds fall 12%,
+> which is duration of about 6 years times 2%, and shares fall 10%. The
+> cautious profiles hold more bonds, so they are hit almost as hard as the
+> aggressive ones. Four of the five profiles lose about 10%. Only cash
+> protects, which is why the Conservative portfolio, with 36% cash, loses
+> least. It's the same lesson as 2022: bonds reduce the risk of an equity
+> crash, but they are the source of risk when rates rise. A "low-risk"
+> label depends on which risk you mean.
+
+**Q3. How do you know your recommended portfolios aren't just a product of your return assumptions?**
+> I tested it. I re-ran the optimiser with the equity risk premium at 3% and
+> 5% instead of 4%, and the weights of the three riskier profiles did not
+> change at all. That's because each profile has a volatility target, and
+> that target, with the weight limits, decides how much equity it can hold.
+> The return assumption mainly changes the expected return I quote. The part
+> that *is* sensitive is the bond and cash split for cautious clients: if I
+> halve the bond premium, the Moderately Conservative portfolio swaps most of
+> its bonds for cash. So I would tell a client that the equity share is
+> robust, and that the choice between bonds and cash depends on how much
+> extra yield bonds actually offer at the time.

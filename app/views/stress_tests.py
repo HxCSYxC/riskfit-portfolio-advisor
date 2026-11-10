@@ -89,9 +89,9 @@ show_figure(plot_rolling_correlation(rolling_correlation(monthly["equities"], mo
 st.markdown(
     "Usually, when shares fall it is because the economy is weakening. Central banks then cut interest rates, "
     "which pushes bond prices **up**, so bonds cushion the fall. That is the idea behind a balanced portfolio, "
-    "and why the correlation between shares and bonds was mostly below zero in the 2010s.\n\n"
+    "and why the correlation between shares and bonds stayed close to zero or below it through the 2010s.\n\n"
     "In 2022 the problem was **inflation**. Central banks raised rates quickly, which pushed bond prices "
-    "**down** and hurt share prices at the same time. The correlation jumped to about +0.7, and shares and bonds "
+    "**down** and hurt share prices at the same time. The correlation jumped to about +0.8, and shares and bonds "
     "fell together. **When inflation is the main risk, bonds may not protect a portfolio.** Cash, "
     "short-term T-bills and gold matter more in that situation."
 )
