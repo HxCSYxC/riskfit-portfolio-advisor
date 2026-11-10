@@ -296,5 +296,6 @@ LEARNING.md                    # plain-English explanation of every part, with i
 
 ---
 
-*Built as a portfolio project for private wealth management, using Python, pandas, SciPy, scikit-learn,
-matplotlib, reportlab and Streamlit.*
+*Built by [Henry Chan](https://github.com/HxCSYxC), a Year 3 Decision Analytics student at HKUST, as a
+portfolio project for private wealth management. It uses Python, pandas, SciPy, scikit-learn, matplotlib,
+reportlab and Streamlit.*
